@@ -298,38 +298,56 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- [Rule 2] 항목명 : 납기구분 / 항목값 : 년납
+            -- Rule 2: 맨 마지막열 값 추가(1개)
+            -- ① 항목명 : 납기구분 / 항목값 : 년납
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_35 = '년납';
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
-            -- [Rule 1] 계약상태변경일 편집
+            -- Rule 1: 계약상태변경일 편집 
+            -- ① [상태]=“계류,정상”이면 [계약상태변경일]을 “0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_26 = '0000-00-00'
             WHERE COLUMN_10 IN ('계류', '정상');
 
+            -- ② [상태]="종료"&[계약상태]="실효(환급금없는실효) 또는 실효(환급금있는실효)"면 [계약상태변경일]=0000-00-00
             UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_26 = '0000-00-00'
             WHERE COLUMN_10 = '종료' AND COLUMN_11 IN ('실효(환급금없는실효)', '실효(환급금있는실효)');
 
-            -- [Rule 2.1] [최종납입월](16) 빈셀 or 1900-01 & [계약상태]="계류(성립이전),반송,철회"면 [최종납입월]=계약년월
-            UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_16 = LEFT(COLUMN_09, 7)
+            -- Rule 2: 최종 편집
+            -- Rule 2.1: ① [최종납입월] “빈셀 또는 1900-01” 추출 후 
+            --    → [계약상태]=“계류(성립이전),반송,철회”면, [최종납입월]에 “계약년월＂로 수정
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED SET COLUMN_16 = LEFT(COLUMN_09, 7)
             WHERE (COLUMN_16 IS NULL OR COLUMN_16 = '' OR COLUMN_16 = '1900-01')
               AND COLUMN_11 IN ('계류(성립이전)', '반송', '철회');
 
-            -- [Rule 2.3] [납입방법](23) 빈셀이면 -> [최종횟수](18)="1"이면 [최종납입일](20)=계약일자, 아니면 0000-00-00
-            UPDATE T_TEMP_RPA_KBL_PROCESSED 
+            -- Rule 2.2: ② [최종횟수] “빈셀 또는 0” 추출 후 
+            --    → [계약상태]=“계류(성립이전),반송,철회”면, [최종횟수]에 “1＂로 수정
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED SET COLUMN_18 = '1'
+            WHERE (COLUMN_18 IS NULL OR COLUMN_18 = '' OR COLUMN_18 = '0')
+              AND COLUMN_11 IN ('계류(성립이전)', '반송', '철회');
+
+            -- Rule 2.3: ③ [최종납입일] “빈셀“ 추출 후
+            --    → [최종횟수]=“1”면, [최종납입일]에 “계약일자＂로 수정
+            --    → [최종횟수]≠“1"이면, [최종납입일]에 “0000-00-00＂로 수정 
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED
             SET COLUMN_20 = CASE WHEN COLUMN_18 = '1' THEN COLUMN_09 ELSE '0000-00-00' END
             WHERE COLUMN_23 IS NULL OR COLUMN_23 = '';
 
-            -- [Rule 3] [납입방법](23)="일시납"이면 (1) [보험료](12)="0" (2) [최종횟수](18)="1"
-            UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_12 = '0', COLUMN_18 = '1' 
+            -- Rule 3: [납입방법]=“일시납” 이면
+            -- ① [보험료]값을 “0”으로 수정
+            -- ② [최종횟수]값을 “1”로 수정
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED SET COLUMN_12 = '0', COLUMN_18 = '1'
             WHERE COLUMN_23 = '일시납';
 
-            -- [Rule 4] [계약상태]="신계약" & [최종납입월] (yyyy-mm) =2개월전 -> [계약상태]="실효".
+            -- Rule 4: [계약상세상태]="신계약" & [최종납입월]=실효월 여부 판단해서 실효로 변경
+            -- * 실효해당월 계산 : 최종납입년월 = 마감월도 -2월
             UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_11 = '실효'
             WHERE COLUMN_11 = '신계약'
               AND REPLACE(COLUMN_16, '-', '') = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 2 MONTH), '%Y%m');
 
-            -- [Rule 5] [계약상태]="실효" & 실효 3년 경과(38개월) -> [계약상태]="시효"
-            UPDATE T_TEMP_RPA_KBL_PROCESSED
+            -- [계약상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED
             SET COLUMN_11 = '시효'
             WHERE COLUMN_11 IN ('실효(환급금없는실효)', '실효(환급금있는실효)')
               AND COLUMN_16 IS NOT NULL
