@@ -329,30 +329,35 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- [Rule 1] 맨 마지막열 값 추가 (납기구분 = 년납)
+            -- Rule 1: 맨 마지막열 값 추가(1개)
+            -- ① 항목명 : 납기구분 / 항목값 : 년납
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_39 = '년납';
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
-            -- [Rule 1] [계약상태]="정상(유지),실효,정상화기간,효력상실" -> [계약변경일자](09)="0000-00-00"
+            -- Rule 1: [계약상태]=“정상(유지),실효,정상화기간,효력상실”이면 [계약변경일]을 “0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_09 = '0000-00-00'
             WHERE COLUMN_07 IN ('정상(유지)', '실효', '정상화기간', '효력상실');
 
-            -- [Rule 2] [납입일자](27)="빈값"이면, [계약일자](08)로 수정
+            -- Rule 2: [납입일자]=“빈값”이면, [계약일자]로 수정
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_27 = COLUMN_08
             WHERE COLUMN_27 IS NULL OR COLUMN_27 = '';
 
-            -- [Rule 3] [최종납입월](29)="빈값"이면, [계약일자](08)로 수정
+            -- Rule 3: [최종납입월]=“빈값＂이면, [계약일자]로 수정
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_29 = COLUMN_08
             WHERE COLUMN_29 IS NULL OR COLUMN_29 = '';
 
-            -- [Rule 4] [납입회차](30)="0"이면, "1"로 수정
+            -- Rule 4: [납입회차]=“0”이면, “1”로 수정
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_30 = '1' WHERE COLUMN_30 = '0';
 
-            -- [Rule 5] [납입주기](24)="일시납" -> (1) [보험료](11)="0" (2) [납입회차](30)="1"
+            -- Rule 5: [납입주기]=“일시납” 이면
+            -- ① [보험료]값을 “0”으로 수정
+            -- ② [납입회차]값을 “1”로 수정
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_11 = '0', COLUMN_30 = '1'
             WHERE COLUMN_24 = '일시납';
 
-            -- [Rule 6] [계약상태](07)="실효" & [최종납입월](29) 38개월 경과 -> "시효"
+            -- Rule 6: [계약상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_07 = '시효'
             WHERE COLUMN_07 = '실효' 
               AND COLUMN_29 IS NOT NULL AND COLUMN_29 <> ''
