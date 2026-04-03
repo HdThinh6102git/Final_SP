@@ -301,22 +301,29 @@ BEGIN
         
         -- [LTR Logic]
         IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납기구분 = 년납, 납입월 = 해당월
+            -- Rule 1: 맨 마지막열 값 추가(2개)
+            -- ① 항목명I : 납기구분 / 항목값 : 년납
+            -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_67 = '년납', COLUMN_68 = v_target_ym;
 
-            -- Rule 2: [계약상태] filtering
+            -- Rule 2: [계약상태]편집
+            -- ① [계약상태]≠"신계약,취소,해지"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 NOT IN ('신계약', '취소', '해지');
+
+            -- ② [계약상태]="해지,취소" & [장기청약일]≠해당월이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED 
             WHERE COLUMN_22 IN ('해지', '취소') AND LEFT(REPLACE(COLUMN_24, '-', ''), 6) <> v_target_ym;
 
-            -- Rule 3: 계약번호 중복 및 "태아" 합산 logic
+            -- Rule 3: 계약번호 중복 편집
+            -- ① 계약번호 오름차순 정렬
             DROP TEMPORARY TABLE IF EXISTS tmp_sorted_ssf;
             CREATE TEMPORARY TABLE tmp_sorted_ssf LIKE T_TEMP_RPA_SSF_PROCESSED;
             INSERT INTO tmp_sorted_ssf SELECT * FROM T_TEMP_RPA_SSF_PROCESSED ORDER BY COLUMN_01 ASC;
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED;
             INSERT INTO T_TEMP_RPA_SSF_PROCESSED SELECT * FROM tmp_sorted_ssf;
 
-            -- Update SORT_ORDER_NO sequentially after sorting
+            -- ②:중복 계약번호 중 [피보험자]="태아"가 있는 경우 "보험료, 월납환산수정P"항목은 합산하여 한건으로 값수정
             SET @seq := 0;
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_01 ASC;
 
@@ -334,32 +341,53 @@ BEGIN
             SET t.COLUMN_08 = agg.sum_c08, t.COLUMN_11 = agg.sum_c11, t.COLUMN_05 = agg.final_name;
             DELETE t FROM T_TEMP_RPA_SSF_PROCESSED t INNER JOIN tmp_tae_a_agg agg ON t.COLUMN_01 = agg.policy_no WHERE t.SYS_ID <> agg.first_id;
 
+            -- Rule 4: 상품명 원수사 원부확인하여 값수정    (장기>계약상세조회>"특성조회항목" → 상품명 확인) (Pause/Skip)
+            
+            -- Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
+            -- → 장기>계약상세조회>"납입정보의 전체 회 / 12"계산한 값 (Pause/Skip)
+
         -- [CAR Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납기구분 = 년납
+            -- Rule 1: 맨 마지막열 값 추가(1개)
+            -- ① 항목명I : 납기구분 / 항목값 : 년납
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_67 = '년납';
-            -- Rule 2: [계약상태]="배서" 삭제
+            
+            -- Rule 2: [계약상태]="배서"면, 데이터 행삭제
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 = '배서';
-            -- Rule 3: [계약상태]="공란" -> "신계약"
+
+            -- Rule 3: [계약상태]="공란"이면 [계약상태]="신계약"으로 값수정
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_22 = '신계약' WHERE COLUMN_22 IS NULL OR COLUMN_22 = '';
-            -- Rule 4: 중복 제거
+            
+            -- Rule 4: 계약번호 중복 편집
+            -- ① 계약번호 오름차순 정렬
+            -- ② 중복 계약번호 중 [계약상태]=모두 "배서"면 해당 데이터들 행삭제
+            -- ③ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_01 IN (SELECT * FROM (SELECT COLUMN_01 FROM T_TEMP_RPA_SSF_PROCESSED GROUP BY COLUMN_01 HAVING COUNT(*)>1 AND SUM(COLUMN_22 <> '배서') = 0) as t);
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 = '배서' AND COLUMN_01 IN (SELECT * FROM (SELECT COLUMN_01 FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 = '신계약') as t);
-            -- Rule 5: 보험료 마이너스 -> 플러스
+            
+            -- Rule 5: [보험료]="마이너스"이면 "플러스"값으로 수정
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_08 = CAST(ABS(CAST(REPLACE(REPLACE(IFNULL(COLUMN_08, '0'), ',', ''), '.', '') AS SIGNED)) AS CHAR) WHERE COLUMN_08 LIKE '-%';
 
         -- [GEN Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납기구분 = 년납
+            -- Rule 1: 맨 마지막열 값 추가(1개)
+            -- ① 항목명I : 납기구분 / 항목값 : 년납
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_67 = '년납';
-            -- Rule 2: [계약상태]="배서" 삭제
+
+            -- Rule 2: [계약상태]="배서"면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 = '배서';
-            -- Rule 3: [계약상태]="공란" -> "신계약"
+
+            -- Rule 3: [계약상태]="공란"이면 "신계약"으로 수정
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_22 = '신계약' WHERE COLUMN_22 IS NULL OR COLUMN_22 = '';
-            -- Rule 4: 중복 제거
+
+            -- Rule 4: 계약번호 중복 편집
+            -- ① 계약번호 오름차순 정렬
+            -- ② 중복 계약번호 중 [계약상태]=모두 "배서"면 해당 데이터들 행삭제
+            -- ③ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_01 IN (SELECT * FROM (SELECT COLUMN_01 FROM T_TEMP_RPA_SSF_PROCESSED GROUP BY COLUMN_01 HAVING COUNT(*)>1 AND SUM(COLUMN_22 <> '배서') = 0) as t);
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 = '배서' AND COLUMN_01 IN (SELECT * FROM (SELECT COLUMN_01 FROM T_TEMP_RPA_SSF_PROCESSED WHERE COLUMN_22 = '신계약') as t);
-            -- Rule 5: 보험료 마이너스 -> 플러스
+
+            -- Rule 5: [보험료]="마이너스"이면 "플러스"값으로 수정
             UPDATE T_TEMP_RPA_SSF_PROCESSED SET COLUMN_08 = CAST(ABS(CAST(REPLACE(REPLACE(IFNULL(COLUMN_08, '0'), ',', ''), '.', '') AS SIGNED)) AS CHAR) WHERE COLUMN_08 LIKE '-%';
         END IF;
 
