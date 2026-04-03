@@ -403,9 +403,14 @@ BEGIN
             
             -- [LTR Logic]
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-                -- Rule 1: 납기구분='년납', 납입월=해당월, 납입일=계상일자(11)
+                -- Rule 1: 맨 마지막열 값 추가(3개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ③ 항목명III : 납입일 / 항목값 : 계상일자와 동일한 값으로 반영
+                -- ※ 전체 행에 반영
                 UPDATE T_TEMP_RPA_HWG_PROCESSED SET COLUMN_36 = '년납', COLUMN_37 = v_target_ym, COLUMN_38 = COLUMN_11;
-                -- Rule 2: 월납환산보험료 음수 -> 행 삭제
+
+                -- Rule 2: [월납환산보험료]="마이너스금액" 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_HWG_PROCESSED WHERE COLUMN_17 IS NOT NULL AND REPLACE(COLUMN_17, ',', '') REGEXP '^-[0-9]+' AND CAST(REPLACE(COLUMN_17, ',', '') AS SIGNED) < 0;
 
             -- [CAR Logic]
@@ -418,11 +423,19 @@ BEGIN
 
             -- [GEN Logic]
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                -- Rule 1: 납기구분='년납', 납입월=해당월, 납기='0'
+                -- Rule 1: 맨 마지막열 값 추가(3개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ③ 항목명III : 납기 / 항목값 : 0
+                -- ※ 전체 행에 반영
+
                 UPDATE T_TEMP_RPA_HWG_PROCESSED SET COLUMN_21 = '년납', COLUMN_22 = v_target_ym, COLUMN_23 = '0';
-                -- Rule 2: 발생구분 IN '추징','환급' -> 행 삭제 / 해지 & ≠해당월 -> 행 삭제 / 보험료 음수 -> 행 삭제
+
+                -- Rule 2:  [발생구분]="추징, 환급"이면 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_HWG_PROCESSED WHERE COLUMN_19 IN ('추징', '환급');
+                -- Rule 3: [발생구분]="해지" & [보험시기]≠"해당월"이면 데이터 행삭제s
                 DELETE FROM T_TEMP_RPA_HWG_PROCESSED WHERE COLUMN_19 = '해지' AND LEFT(REPLACE(REPLACE(COLUMN_11, '-', ''), '.', ''), 6) <> v_target_ym;
+                -- Rule 4: [보험료]="마이너스 금액"이면 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_HWG_PROCESSED WHERE COLUMN_18 IS NOT NULL AND REPLACE(COLUMN_18, ',', '') REGEXP '^-[0-9]+' AND CAST(REPLACE(COLUMN_18, ',', '') AS SIGNED) < 0;
             END IF;
         END IF;
