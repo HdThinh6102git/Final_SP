@@ -272,33 +272,34 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- [Rule 1] Extra Columns
-            UPDATE T_TEMP_RPA_HDG_PROCESSED 
-            SET COLUMN_54 = '년납', 
-                COLUMN_55 = v_target_ym, 
-                COLUMN_56 = COLUMN_01;
-
-            IF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                UPDATE T_TEMP_RPA_HDG_PROCESSED SET COLUMN_57 = '일시납';
-            END IF;
-
-            -- [Rule 2] [계약번호] 정렬 후 [배서구분] IN ('추징', '환급') 행 삭제
-            -- 2-1: Sort by Policy Number (COLUMN_12)
-            DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-            CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-            INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-            DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-            INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-            DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-
-            -- 2-2: Reset SORT_ORDER_NO sequentially
-            SET @seq := 0;
-            UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
-
-            -- 2-3: Delete deletions
-            DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
+            
 
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
+                -- Rule 1: 맨 마지막열 값 추가(3개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
+                -- ※ 전체 행에 반영
+                UPDATE T_TEMP_RPA_HDG_PROCESSED
+                SET COLUMN_54 = '년납', 
+                    COLUMN_55 = v_target_ym, 
+                    COLUMN_56 = COLUMN_01;
+
+                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]="추징,환급"이면 데이터 행삭제
+                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
+                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
+                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
+                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+
+                -- 2-2: Reset SORT_ORDER_NO sequentially
+                SET @seq := 0;
+                UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
+
+                -- 2-3: Delete deletions
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
+
                 -- [Rule 3] 중복 계약번호: '철회' + '정상' 처리
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='철회')>0 AND SUM(COLUMN_31='정상')>0;
@@ -309,13 +310,31 @@ BEGIN
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE LEFT(COLUMN_03, 6) <> v_target_ym;
 
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-                -- [Rule 3] 중복 계약번호: '취소' + '정상' 처리
+
+                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
+                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
+                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
+                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
+                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+
+                -- 2-2: Reset SORT_ORDER_NO sequentially
+                SET @seq := 0;
+                UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
+
+                -- 2-3: Delete deletions
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
+
+                -- Rule 3: 계약번호 중복 편집
+                -- 중복 계약번호의 [배서구분]=각각"취소,정상"이면 [배서구분]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
+
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='취소')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '취소';
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
                 
-                -- [Rule 4] [계약구분]="공동인수" 합산
+                -- Rule 4: [계약구분]="공동인수"이면 중복증번의 [공동인수보험료]와 [수정보험료] 값을 각각 합하여 [공동인수보험료],[수정보험료]로 값수정해주고 [보험료]값도 수정한 [공동인수보험료]로 변경해줌
                 DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
                 CREATE TEMPORARY TABLE tmp_agg_data
                 SELECT COLUMN_12, SUM(CAST(REPLACE(IFNULL(COLUMN_29,'0'),',','') AS SIGNED)) AS s29, SUM(CAST(REPLACE(IFNULL(COLUMN_24,'0'),',','') AS SIGNED)) AS s24, MIN(SYS_ID) AS mid
@@ -324,13 +343,40 @@ BEGIN
                 DELETE t FROM T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_12 = a.COLUMN_12 WHERE t.SYS_ID <> a.mid;
 
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                -- [Rule 3-1] '취소' + '정상' 처리
+                -- Rule 1: 맨 마지막열 값 추가(3개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
+                -- ④ 항목명IV : 납입주기 / 항목값 : 일시납
+                -- ※ 전체 행에 반영
+                UPDATE T_TEMP_RPA_HDG_PROCESSED
+                SET COLUMN_54 = '년납', 
+                    COLUMN_55 = v_target_ym, 
+                    COLUMN_56 = COLUMN_01,
+                    COLUMN_57 = '일시납';
+
+                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
+                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
+                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
+                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
+                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+
+                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
+                SET @seq := 0;
+                UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
+
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
+
+                -- Rule 3: 계약번호 중복 편집
+                -- Rule 3.1: 중복 계약번호의 [배서구분]=각각"취소,정상"이면 [배서구분]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='취소')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '취소';
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
                 
-                -- [Rule 3-2] 모두 '정상'인 경우 합산 처리 (19 + 24)
+                -- Rule 3.2: 중복 계약번호의 [배서구분]=모두 "정상"인 증번들은 [보험료]와 [수정보험료]를 합하여 한건으로 값수정
                 DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
                 CREATE TEMPORARY TABLE tmp_agg_data
                 SELECT COLUMN_12, SUM(CAST(REPLACE(IFNULL(COLUMN_19,'0'),',','') AS SIGNED)) AS s19, SUM(CAST(REPLACE(IFNULL(COLUMN_24,'0'),',','') AS SIGNED)) AS s24, MIN(SYS_ID) AS mid
