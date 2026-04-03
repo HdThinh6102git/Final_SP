@@ -142,18 +142,18 @@ BEGIN
             
             -- 34-36
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_34, ', -- -
-                'COLUMN_35, ', -- -
-                'NULL, '); -- -
+                'COLUMN_34, ', -- 수금원코드
+                'COLUMN_35, ', -- 수금원명
+                'NULL, '); -- 납기구분(Target)
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_34, ', -- -
-                'COLUMN_35, ', -- -
-                'COLUMN_36, '); -- -, -, 납기구분
+                'COLUMN_34, ', -- 수금원코드
+                'COLUMN_35, ', -- 수금원명
+                'COLUMN_36, '); -- 수금원코드, 수금원명, 납기구분
             
             -- 37-38
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'NULL, ', -- -
-                'NULL'); -- -
+                'NULL, ', -- 납입월(Target)
+                'NULL'); -- 납입일(Target)
             SET v_proc_cols = CONCAT(v_proc_cols, 
                 'COLUMN_37, ', -- 납입월
                 'COLUMN_38'); -- 납입월, 납입일
