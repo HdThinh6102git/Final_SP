@@ -28,8 +28,6 @@ BEGIN
     SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 38 MONTH), '%Y%m');
 
     -- 1. Hardcoded Column Mapping for Lotte Insurance (LTG)
-    -- 1. Hardcoded Column Mapping for Lotte Insurance (LTG)
-    -- 1. Hardcoded Column Mapping for Lotte Insurance (LTG)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         -- Mapping for NEW LTR/GEN (Columns 01-109 + Target-only 110)
         IF UPPER(IN_INSURANCE_TYPE) IN ('LTR', 'GEN') THEN
@@ -572,30 +570,37 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납기구분 = 년납
+            -- Rule 1: Column1열 값 변경(1개)
+            -- 항목명I : 납기구분 / 항목값 : 년납
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_LTG_PROCESSED SET COLUMN_110 = '년납';
 
-            -- Rule 2: [처리구분](23) ≠ "신규, 추징" 삭제
+            -- Rule 2:  [처리구분]≠"신규/추징"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_LTG_PROCESSED WHERE COLUMN_23 NOT IN ('신규', '추징', '신규/추징');
 
-            -- Rule 3: 중복 증권번호 처리
+            -- Rule 3: 중복 증번 편집
+            -- ① [증권번호] 오름차순 정렬
+            -- ② 중복 증권번호 중 [처리구분]=각각"정상,취소/철회"이면 [처리구분]="취소" 값수정 및 [보험료]="마이너스금액" 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
             CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_08 FROM T_TEMP_RPA_LTG_PROCESSED GROUP BY COLUMN_08 HAVING SUM(COLUMN_23 IN ('취소', '철회', '취소/철회')) > 0 AND SUM(COLUMN_23='정상') > 0;
             UPDATE T_TEMP_RPA_LTG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_08 = d.COLUMN_08 SET t.COLUMN_23 = '취소' WHERE t.COLUMN_23 = '정상';
             DELETE FROM T_TEMP_RPA_LTG_PROCESSED WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_dup_case) AND (COLUMN_30 LIKE '-%' OR CAST(REPLACE(COLUMN_30,',','') AS DECIMAL(18,0)) < 0);
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) IN ('EXT', 'EXISTING') THEN
-            -- Rule 1: [상태](11)="정상,불능" -> [실적기준일](12)="0000-00-00"
+            -- Rule 1: [상태]=“정상,불능”이면 [실적기준일(변경일자)]=“0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_LTG_PROCESSED SET COLUMN_12 = '0000-00-00' WHERE COLUMN_11 IN ('정상', '불능');
 
-            -- Rule 2: 연체 처리
+            -- Rule 2:  [상태]=“정상” & [세부상태항목]≠"납입면제,"완납"이면 [납입년월] 연체건은 [상태]값을 "연체"로 수정
+            -- 연체기준 : 최종납입월도가 마감월도보다 작은 경우(예시, 최종납입월도 2025.12 / 마감월도 2026.01 → 연체)
+
             UPDATE T_TEMP_RPA_LTG_PROCESSED
             SET COLUMN_11 = '연체'
             WHERE COLUMN_11 = '정상'
               AND COLUMN_34 NOT LIKE '%납입면제%' AND COLUMN_34 NOT LIKE '%완납%'
               AND COLUMN_05 < v_target_ym;
 
-            -- Rule 3: 시효 처리
+            -- Rule 3: [상태]=“실효” & [납입년월]=“실효 3년 경과”면, [상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_LTG_PROCESSED SET COLUMN_11 = '시효' WHERE COLUMN_11 = '실효' AND COLUMN_05 <= v_cutoff_ym;
         END IF;
 

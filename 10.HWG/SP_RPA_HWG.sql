@@ -32,113 +32,113 @@ BEGIN
             
             -- 01-03
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_01, ', -- -
-                'COLUMN_02, ', -- -
-                'COLUMN_03, '); -- -
+                'COLUMN_01, ', -- 소속기관
+                'COLUMN_02, ', -- 팀기관
+                'COLUMN_03, '); -- 취급자코드
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_01, ', -- -
-                'COLUMN_02, ', -- -
-                'COLUMN_03, '); -- -, -, -
+                'COLUMN_01, ', -- 소속기관
+                'COLUMN_02, ', -- 팀기관
+                'COLUMN_03, '); -- 소속기관, 팀기관, 취급자코드
             
             -- 04-06
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_04, ', -- -
-                'COLUMN_05, ', -- -
-                'COLUMN_06, '); -- -
+                'COLUMN_04, ', -- 취급자
+                'COLUMN_05, ', -- 사용인코드
+                'COLUMN_06, '); -- 사용인
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_04, ', -- -
-                'COLUMN_05, ', -- -
-                'COLUMN_06, '); -- -, -, -
+                'COLUMN_04, ', -- 취급자
+                'COLUMN_05, ', -- 사용인코드
+                'COLUMN_06, '); -- 취급자, 사용인코드, 사용인
             
             -- 07-09
             SET v_raw_cols = CONCAT(v_raw_cols, 
                 'COLUMN_07, ', -- 증권번호
-                'COLUMN_08, ', -- -
-                'COLUMN_09, '); -- -
+                'COLUMN_08, ', -- 상품명
+                'COLUMN_09, '); -- 계약자
             SET v_proc_cols = CONCAT(v_proc_cols, 
                 'COLUMN_07, ', -- 증권번호
-                'COLUMN_08, ', -- -
-                'COLUMN_09, '); -- -, 증권번호, -
+                'COLUMN_08, ', -- 상품명
+                'COLUMN_09, '); -- 증권번호, 상품명, 계약자
             
             -- 10-12
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_10, ', -- -
+                'COLUMN_10, ', -- 피보험자
                 'COLUMN_11, ', -- 계상일자
-                'COLUMN_12, '); -- -
+                'COLUMN_12, '); -- 보험시기
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_10, ', -- -
+                'COLUMN_10, ', -- 피보험자
                 'COLUMN_11, ', -- 계상일자
-                'COLUMN_12, '); -- -, 계상일자, -
+                'COLUMN_12, '); -- 피보험자, 계상일자, 보험시기
             
             -- 13-15
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_13, ', -- -
-                'COLUMN_14, ', -- -
-                'COLUMN_15, '); -- -
+                'COLUMN_13, ', -- 실납입기간
+                'COLUMN_14, ', -- 수금방법
+                'COLUMN_15, '); -- 납입주기
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_13, ', -- -
-                'COLUMN_14, ', -- -
-                'COLUMN_15, '); -- -, -, -
+                'COLUMN_13, ', -- 실납입기간
+                'COLUMN_14, ', -- 수금방법
+                'COLUMN_15, '); -- 실납입기간, 수금방법, 납입주기
             
             -- 16-18
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_16, ', -- -
-                'COLUMN_17, ', -- 월납환산
-                'COLUMN_18, '); -- -
+                'COLUMN_16, ', -- 계약상태명
+                'COLUMN_17, ', -- 월납환산보험료
+                'COLUMN_18, '); -- 영수보험료
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_16, ', -- -
-                'COLUMN_17, ', -- 월납환산
-                'COLUMN_18, '); -- -, 월납환산, -
+                'COLUMN_16, ', -- 계약상태명
+                'COLUMN_17, ', -- 월납환산보험료
+                'COLUMN_18, '); -- 계약상태명, 월납환산보험료, 영수보험료
             
             -- 19-21
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_19, ', -- -
-                'COLUMN_20, ', -- -
-                'COLUMN_21, '); -- -
+                'COLUMN_19, ', -- 보장보험료
+                'COLUMN_20, ', -- 환산실적
+                'COLUMN_21, '); -- 핸드폰
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_19, ', -- -
-                'COLUMN_20, ', -- -
-                'COLUMN_21, '); -- -, -, -
+                'COLUMN_19, ', -- 보장보험료
+                'COLUMN_20, ', -- 환산실적
+                'COLUMN_21, '); -- 보장보험료, 환산실적, 핸드폰
             
             -- 22-24
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_22, ', -- -
-                'COLUMN_23, ', -- -
-                'COLUMN_24, '); -- -
+                'COLUMN_22, ', -- 핸드폰뒷자리
+                'COLUMN_23, ', -- 자택연락처
+                'COLUMN_24, '); -- 자택연락처뒷자리
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_22, ', -- -
-                'COLUMN_23, ', -- -
-                'COLUMN_24, '); -- -, -, -
+                'COLUMN_22, ', -- 핸드폰뒷자리
+                'COLUMN_23, ', -- 자택연락처
+                'COLUMN_24, '); -- 핸드폰뒷자리, 자택연락처, 자택연락처뒷자리
             
             -- 25-27
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_25, ', -- -
-                'COLUMN_26, ', -- -
-                'COLUMN_27, '); -- -
+                'COLUMN_25, ', -- 증권발행여부
+                'COLUMN_26, ', -- 청약형태
+                'COLUMN_27, '); -- 만기구분
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_25, ', -- -
-                'COLUMN_26, ', -- -
-                'COLUMN_27, '); -- -, -, -
+                'COLUMN_25, ', -- 증권발행여부
+                'COLUMN_26, ', -- 청약형태
+                'COLUMN_27, '); -- 증권발행여부, 청약형태, 만기구분
             
             -- 28-30
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_28, ', -- -
-                'COLUMN_29, ', -- -
-                'COLUMN_30, '); -- -
+                'COLUMN_28, ', -- 상품코드
+                'COLUMN_29, ', -- 상품분류
+                'COLUMN_30, '); -- 서명방법
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_28, ', -- -
-                'COLUMN_29, ', -- -
-                'COLUMN_30, '); -- -, -, -
-            
+                'COLUMN_28, ', -- 상품코드
+                'COLUMN_29, ', -- 상품분류
+                'COLUMN_30, '); -- 상품코드, 상품분류, 서명방법
+
             -- 31-33
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_31, ', -- -
-                'COLUMN_32, ', -- -
-                'COLUMN_33, '); -- -
+                'COLUMN_31, ', -- 보험종목코드
+                'COLUMN_32, ', -- 실순갱신증번
+                'COLUMN_33, '); -- 본인계약여부
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_31, ', -- -
-                'COLUMN_32, ', -- -
-                'COLUMN_33, '); -- -, -, -
+                'COLUMN_31, ', -- 보험종목코드
+                'COLUMN_32, ', -- 실순갱신증번
+                'COLUMN_33, '); -- 보험종목코드, 실순갱신증번, 본인계약여부
             
             -- 34-36
             SET v_raw_cols = CONCAT(v_raw_cols, 
@@ -158,203 +158,217 @@ BEGIN
                 'COLUMN_37, ', -- 납입월
                 'COLUMN_38'); -- 납입월, 납입일
 
-        -- Mapping for CAR (Columns 01-30 + Target-only 31, 32, 33, 34)
+        -- Mapping for CAR (Columns 01-34)
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
             SET v_raw_cols = ''; SET v_proc_cols = '';
             
             -- 01-03
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_01, ', -- -
-                'COLUMN_02, ', -- -
-                'COLUMN_03, '); -- -
+                'COLUMN_01, ', -- 취급자코드
+                'COLUMN_02, ', -- 취급자
+                'COLUMN_03, '); -- 사용인코드
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_01, ', -- -
-                'COLUMN_02, ', -- -
-                'COLUMN_03, '); -- -, -, -
+                'COLUMN_01, ', -- 취급자코드
+                'COLUMN_02, ', -- 취급자
+                'COLUMN_03, '); -- 취급자코드, 취급자, 사용인코드
             
             -- 04-06
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_04, ', -- -
-                'COLUMN_05, ', -- -
-                'COLUMN_06, '); -- -
+                'COLUMN_04, ', -- 사용인
+                'COLUMN_05, ', -- 팀기관
+                'COLUMN_06, '); -- 피보험자
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_04, ', -- -
-                'COLUMN_05, ', -- -
-                'COLUMN_06, '); -- -, -, -
+                'COLUMN_04, ', -- 사용인
+                'COLUMN_05, ', -- 팀기관
+                'COLUMN_06, '); -- 사용인, 팀기관, 피보험자
             
             -- 07-09
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_07, ', -- -
+                'COLUMN_07, ', -- 계약자
                 'COLUMN_08, ', -- 증권번호
-                'COLUMN_09, '); -- -
+                'COLUMN_09, '); -- 차량번호
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_07, ', -- -
+                'COLUMN_07, ', -- 계약자
                 'COLUMN_08, ', -- 증권번호
-                'COLUMN_09, '); -- -, 증권번호, -
+                'COLUMN_09, '); -- 계약자, 증권번호, 차량번호
             
             -- 10-12
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_10, ', -- -
-                'COLUMN_11, ', -- -
-                'COLUMN_12, '); -- -
+                'COLUMN_10, ', -- 보험상품
+                'COLUMN_11, ', -- 플랜형
+                'COLUMN_12, '); -- 마일리지특약
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_10, ', -- -
-                'COLUMN_11, ', -- -
-                'COLUMN_12, '); -- -, -, -
+                'COLUMN_10, ', -- 보험상품
+                'COLUMN_11, ', -- 플랜형
+                'COLUMN_12, '); -- 보험상품, 플랜형, 마일리지특약
             
             -- 13-15
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_13, ', -- -
-                'COLUMN_14, ', -- -
-                'COLUMN_15, '); -- -
+                'COLUMN_13, ', -- 보험시기
+                'COLUMN_14, ', -- 보험종기
+                'COLUMN_15, '); -- 표준율
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_13, ', -- -
-                'COLUMN_14, ', -- -
-                'COLUMN_15, '); -- -, -, -
+                'COLUMN_13, ', -- 보험시기
+                'COLUMN_14, ', -- 보험종기
+                'COLUMN_15, '); -- 보험시기, 보험종기, 표준율
             
             -- 16-18
             SET v_raw_cols = CONCAT(v_raw_cols, 
                 'COLUMN_16, ', -- 발생구분
-                'COLUMN_17, ', -- -
+                'COLUMN_17, ', -- 납입회차
                 'COLUMN_18, '); -- 보험료
             SET v_proc_cols = CONCAT(v_proc_cols, 
                 'COLUMN_16, ', -- 발생구분
-                'COLUMN_17, ', -- -
-                'COLUMN_18, '); -- 발생구분, -, 보험료
+                'COLUMN_17, ', -- 납입회차
+                'COLUMN_18, '); -- 발생구분, 납입회차, 보험료
             
             -- 19-21
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_19, ', -- -
-                'COLUMN_20, ', -- -
-                'COLUMN_21, '); -- -
+                'COLUMN_19, ', -- 계상일자
+                'COLUMN_20, ', -- 영수일자
+                'COLUMN_21, '); -- 금종구분
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_19, ', -- -
-                'COLUMN_20, ', -- -
-                'COLUMN_21, '); -- -, -, -
+                'COLUMN_19, ', -- 계상일자
+                'COLUMN_20, ', -- 영수일자
+                'COLUMN_21, '); -- 계상일자, 영수일자, 금종구분
             
             -- 22-24
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_22, ', -- -
-                'COLUMN_23, ', -- -
-                'COLUMN_24, '); -- -
+                'COLUMN_22, ', -- 계약구분
+                'COLUMN_23, ', -- 자율여부
+                'COLUMN_24, '); -- 가입구분
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_22, ', -- -
-                'COLUMN_23, ', -- -
-                'COLUMN_24, '); -- -, -, -
+                'COLUMN_22, ', -- 계약구분
+                'COLUMN_23, ', -- 자율여부
+                'COLUMN_24, '); -- 계약구분, 자율여부, 가입구분
             
             -- 25-27
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_25, ', -- -
-                'COLUMN_26, ', -- -
-                'COLUMN_27, '); -- -
+                'COLUMN_25, ', -- 물건구분
+                'COLUMN_26, ', -- 스캔여부
+                'COLUMN_27, '); -- 비례소득
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_25, ', -- -
-                'COLUMN_26, ', -- -
-                'COLUMN_27, '); -- -, -, -
+                'COLUMN_25, ', -- 물건구분
+                'COLUMN_26, ', -- 스캔여부
+                'COLUMN_27, '); -- 물건구분, 스캔여부, 비례소득
             
             -- 28-30
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_28, ', -- -
-                'COLUMN_29, ', -- -
-                'COLUMN_30, '); -- -
+                'COLUMN_28, ', -- 청약형태
+                'COLUMN_29, ', -- 전자서명
+                'COLUMN_30, '); -- 영업속성
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_28, ', -- -
-                'COLUMN_29, ', -- -
-                'COLUMN_30, '); -- -, -, -
+                'COLUMN_28, ', -- 청약형태
+                'COLUMN_29, ', -- 전자서명
+                'COLUMN_30, '); -- 청약형태, 전자서명, 영업속성
             
-            -- 31-34
+            -- 31-33
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'NULL, ', -- -
-                'NULL, ', -- -
-                'NULL, ', -- -
-                'NULL'); -- -
+                'NULL, ', -- 납기구분(Target)
+                'NULL, ', -- 납입월(Target)
+                'NULL, '); -- 납기(Target)
             SET v_proc_cols = CONCAT(v_proc_cols, 
                 'COLUMN_31, ', -- 납기구분
                 'COLUMN_32, ', -- 납입월
-                'COLUMN_33, ', -- 납기
-                'COLUMN_34'); -- 납기구분, 납입월, 납기, 납입주기
+                'COLUMN_33, '); -- 납기구분, 납입월, 납기
+            
+            -- 34
+            SET v_raw_cols = CONCAT(v_raw_cols, 
+                'NULL'); -- 납입주기(Target)
+            SET v_proc_cols = CONCAT(v_proc_cols, 
+                'COLUMN_34'); -- 납입주기
 
-        -- Mapping for GEN (Columns 01-20 + Target-only 21, 22, 23)
+        -- Mapping for GEN (Columns 01-26)
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
             SET v_raw_cols = ''; SET v_proc_cols = '';
             
             -- 01-03
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_01, ', -- -
-                'COLUMN_02, ', -- -
-                'COLUMN_03, '); -- -
+                'COLUMN_01, ', -- 모집자
+                'COLUMN_02, ', -- 모집자명
+                'COLUMN_03, '); -- 사용인
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_01, ', -- -
-                'COLUMN_02, ', -- -
-                'COLUMN_03, '); -- -, -, -
+                'COLUMN_01, ', -- 모집자
+                'COLUMN_02, ', -- 모집자명
+                'COLUMN_03, '); -- 모집자, 모집자명, 사용인
             
             -- 04-06
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_04, ', -- -
-                'COLUMN_05, ', -- -
-                'COLUMN_06, '); -- -
+                'COLUMN_04, ', -- 사용인명
+                'COLUMN_05, ', -- 팀기관
+                'COLUMN_06, '); -- 보험종목
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_04, ', -- -
-                'COLUMN_05, ', -- -
-                'COLUMN_06, '); -- -, -, -
+                'COLUMN_04, ', -- 사용인명
+                'COLUMN_05, ', -- 팀기관
+                'COLUMN_06, '); -- 사용인명, 팀기관, 보험종목
             
             -- 07-09
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_07, ', -- 증권번호
-                'COLUMN_08, ', -- -
-                'COLUMN_09, '); -- -
+                'COLUMN_07, ', -- 상품명
+                'COLUMN_08, ', -- 증권번호
+                'COLUMN_09, '); -- 상품코드
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_07, ', -- 증권번호
-                'COLUMN_08, ', -- -
-                'COLUMN_09, '); -- -, 증권번호, -
+                'COLUMN_07, ', -- 상품명
+                'COLUMN_08, ', -- 증권번호
+                'COLUMN_09, '); -- 상품명, 증권번호, 상품코드
             
             -- 10-12
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_10, ', -- -
-                'COLUMN_11, ', -- -
-                'COLUMN_12, '); -- -
+                'COLUMN_10, ', -- 계약자명
+                'COLUMN_11, ', -- 보험시기
+                'COLUMN_12, '); -- 보험종기
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_10, ', -- -
-                'COLUMN_11, ', -- -
-                'COLUMN_12, '); -- -, -, -
+                'COLUMN_10, ', -- 계약자명
+                'COLUMN_11, ', -- 보험시기
+                'COLUMN_12, '); -- 계약자명, 보험시기, 보험종기
             
             -- 13-15
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_13, ', -- -
-                'COLUMN_14, ', -- -
-                'COLUMN_15, '); -- -
+                'COLUMN_13, ', -- 인수구분
+                'COLUMN_14, ', -- 계상일자
+                'COLUMN_15, '); -- 수납일자
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_13, ', -- -
-                'COLUMN_14, ', -- -
-                'COLUMN_15, '); -- -, -, -
+                'COLUMN_13, ', -- 인수구분
+                'COLUMN_14, ', -- 계상일자
+                'COLUMN_15, '); -- 인수구분, 계상일자, 수납일자
             
             -- 16-18
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                'COLUMN_16, ', -- -
-                'COLUMN_17, ', -- -
-                'COLUMN_18, '); -- 보험료
+                'COLUMN_16, ', -- 대리점분담
+                'COLUMN_17, ', -- 비례소득
+                'COLUMN_18, '); -- 영수보험료
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                'COLUMN_16, ', -- -
-                'COLUMN_17, ', -- -
-                'COLUMN_18, '); -- -, -, 보험료
+                'COLUMN_16, ', -- 대리점분담
+                'COLUMN_17, ', -- 비례소득
+                'COLUMN_18, '); -- 대리점분담, 비례소득, 영수보험료
             
             -- 19-21
             SET v_raw_cols = CONCAT(v_raw_cols, 
                 'COLUMN_19, ', -- 발생구분
-                'COLUMN_20, ', -- -
-                'NULL'); -- -
+                'COLUMN_20, ', -- 실환산P
+                'NULL, '); -- 납기구분(Target)
             SET v_proc_cols = CONCAT(v_proc_cols, 
                 'COLUMN_19, ', -- 발생구분
-                'COLUMN_20, ', -- -
-                'COLUMN_21'); -- 발생구분, -, 납기구분
+                'COLUMN_20, ', -- 실환산P
+                'COLUMN_21, '); -- 발생구분, 실환산P, 납기구분
             
-            -- 22-23
+            -- 22-24
             SET v_raw_cols = CONCAT(v_raw_cols, 
-                ', NULL, ', -- -
-                'NULL'); -- -
+                'NULL, ', -- 납입월(Target)
+                'NULL, ', -- 납기(Target)
+                'NULL, '); -- 만기일자(Target)
             SET v_proc_cols = CONCAT(v_proc_cols, 
-                ', COLUMN_22, ', -- 납입월
-                'COLUMN_23'); -- 납입월, 납기
+                'COLUMN_22, ', -- 납입월
+                'COLUMN_23, ', -- 납기
+                'COLUMN_24, '); -- 납입월, 납기, 만기일자
+            
+            -- 25-26
+            SET v_raw_cols = CONCAT(v_raw_cols, 
+                'NULL, ', -- 납입방법(Target)
+                'NULL'); -- 보험사성적(Target)
+            SET v_proc_cols = CONCAT(v_proc_cols, 
+                'COLUMN_25, ', -- 납입방법
+                'COLUMN_26'); -- 납입방법, 보험사성적
         END IF;
 
     END IF;

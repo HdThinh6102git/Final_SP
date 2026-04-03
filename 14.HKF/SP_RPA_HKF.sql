@@ -276,17 +276,25 @@ BEGIN
             
             -- [LTR Logic]
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-                -- Rule 1: Set payment info (납입정보 설정)
+                -- Rule 1: 맨 마지막열 값 추가(2개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+
                 UPDATE T_TEMP_RPA_HKF_PROCESSED SET COLUMN_31 = '년납', COLUMN_32 = v_target_ym;
                 
-                -- Rule 2: Convert premiums to absolute values (보험료 절댓값 변환)
+                -- Rule 2: 중복 증번 편집
+                -- ① 맨아래 계 부분의 데이터 행2개 삭제
+                -- ② [계약번호] 오름차순 정렬
+                -- ③ 중복 계약번호 중 [상태]=각각"정상,철회/인수거부"이면 [상태]="정상" 데이터 행삭제
+                -- ④ [영수보험료],[수정보험료]="마이너스 금액"이면 "플러스 금액"으로 값수정
                 UPDATE T_TEMP_RPA_HKF_PROCESSED SET COLUMN_14 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_14,'0'), ',', '') AS SIGNED)) AS CHAR) WHERE REPLACE(COLUMN_14, ',', '') REGEXP '^-[0-9]+';
                 UPDATE T_TEMP_RPA_HKF_PROCESSED SET COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22,'0'), ',', '') AS SIGNED)) AS CHAR) WHERE REPLACE(COLUMN_22, ',', '') REGEXP '^-[0-9]+';
                 
-                -- Rule 3: Target month filter (대상 월 필터링)
+                -- Rule 3: [계약일자]≠"해당월"면 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_HKF_PROCESSED WHERE LEFT(REPLACE(REPLACE(COLUMN_03, '-', ''), '.', ''), 6) <> v_target_ym;
 
-                -- Rule 4: Deduplication logic (중복 처리: 정상 + 철회 -> 정상 삭제)
+                -- Rule 4: [납기]="세납"인 경우, 원수사 원부 조회 후 년납으로 값수정
+                -- → 원부확인 : 업무메뉴>계약>조회>"계약상세"→ "계약번호" 입력 후 조회 → "납입기간" 확인
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_chulhoe_hkf;
                 CREATE TEMPORARY TABLE tmp_dup_chulhoe_hkf (seq_no VARCHAR(150));
                 INSERT INTO tmp_dup_chulhoe_hkf (seq_no)
@@ -297,18 +305,29 @@ BEGIN
                 
             -- [GEN Logic]
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                -- Rule 1: Default values setup (기본값 설정)
+                -- Rule 1: 맨 마지막열 값 추가(6개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ③ 항목명III : 납입주기 / 항목값 : 일시납
+                -- ④ 항목명IV : 만기일자 / 항목값 : 증번별로 원부확인하여 데이터반영
+                -- ⑤ 항목명V : 납기 / 항목값 : 0
+                -- ⑥ 항목명VI : 보험사성적 / 항목값 : 0
+                -- ※ 전체 행에 반영
                 UPDATE T_TEMP_RPA_HKF_PROCESSED SET COLUMN_21 = '년납', COLUMN_22 = v_target_ym, COLUMN_23 = '일시납', COLUMN_24 = '0', COLUMN_25 = '0', COLUMN_26 = '0';
                 
-                -- Rule 2: Duplicate handling (중복 처리)
-                -- 중복 증권번호 중 [영수보험료]="0"은 데이터 행삭제하고 [영수보험료]≠"0" 데이터는 [상태]="철회"로 값수정
+                -- Rule 2: 중복 증번 편집
+                -- ① 맨아래 계 부분의 데이터 행2개 삭제
+                -- ① [증권번호] 오름차순 정렬
+                -- ② 중복 증권번호 중 [합계보험료]="0"은 데이터 행삭제하고 [합계보험료]≠"0" 데이터는 [상태]="철회"로 값수정
+                -- ③ [만기일자]은 원수사 원부에서 조회하여 값수정
+                -- → 원부확인 : 업무메뉴>계약>조회>"계약상세"→ "계약번호" 입력 후 조회 → " 만기일자" 확인
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen_hkf;
                 CREATE TEMPORARY TABLE tmp_dup_gen_hkf (seq_no VARCHAR(150));
                 INSERT INTO tmp_dup_gen_hkf (seq_no) SELECT COLUMN_05 FROM T_TEMP_RPA_HKF_PROCESSED GROUP BY COLUMN_05 HAVING COUNT(*) > 1;
                 
-                -- Delete zero premium duplicates (보험료 0인 중복건 삭제)
+                -- 중복 증권번호 중 [합계보험료]="0"은 데이터 행삭제
                 DELETE t FROM T_TEMP_RPA_HKF_PROCESSED t INNER JOIN tmp_dup_gen_hkf d ON t.COLUMN_05 = d.seq_no WHERE CAST(REPLACE(IFNULL(t.COLUMN_15,'0'), ',', '') AS DECIMAL(20,2)) = 0;
-                -- Update non-zero duplicates to 'Withdraw' (보험료 0이 아닌 중복건 '철회' 처리)
+                -- 중복 증권번호 중 [합계보험료]≠"0" 데이터는 [상태]="철회"로 값수정
                 UPDATE T_TEMP_RPA_HKF_PROCESSED t INNER JOIN tmp_dup_gen_hkf d ON t.COLUMN_05 = d.seq_no SET t.COLUMN_11 = '철회' WHERE CAST(REPLACE(IFNULL(t.COLUMN_15,'0'), ',', '') AS DECIMAL(20,2)) <> 0;
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen_hkf;
             END IF;
