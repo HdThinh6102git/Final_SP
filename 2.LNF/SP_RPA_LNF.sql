@@ -317,14 +317,21 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: COLUMN_30 = '년납', COLUMN_31 = 해당월
+            -- Rule 1: 맨 마지막열 값 추가(2개)
+            -- ① 항목명I : 납기구분 / 항목값 : 년납
+            -- ② 항목명II : 납입월 / 항목값 : 해당월도(ex.202512)
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_LNF_PROCESSED SET COLUMN_30 = '년납', COLUMN_31 = v_target_ym;
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
-            -- Rule 1: [계약상태] in ('실효','시효','유지','청약') -> [소멸일자]='0000-00-00'
+            -- Rule 1: [계약상태]=“실효,시효,유지,청약”이면 [소멸일자]에 “0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_LNF_PROCESSED SET COLUMN_32 = '0000-00-00' WHERE COLUMN_29 IN ('실효', '시효', '유지', '청약');
 
-            -- Rule 3: [계약상태]='실효' & [유지년월] 38개월 경과 -> [계약상태]='시효'
+            -- Rule 2: [유지횟수]=“0”이면, 제휴사 원부 조회하여 값 확인 후 수정(심사.계약>계약사항관리>"보험료입금조회" → 납입회차(첫번째 행))
+            -- Pause/Skip
+
+            -- Rule 3: [계약상태]=“실효” & [유지년월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_LNF_PROCESSED SET COLUMN_29 = '시효'
             WHERE COLUMN_29 = '실효'
               AND COLUMN_39 IS NOT NULL AND COLUMN_39 <> '' AND REPLACE(COLUMN_39, '-', '') <= v_cutoff_ym;
