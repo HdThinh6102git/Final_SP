@@ -161,15 +161,26 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
-            -- [Rule 3] [상태]=실효,연체,완납,정상이면 [소멸일자]값을 “0000-00-00”으로 수정
+            -- Rule 2: [상태]=실효,연체,완납,정상 & [UV종납년월]=값있음 이면
+            -- ① [종납년월]값을 [UV종납년월]로 수정
+            -- ② [납입횟수]값을 [UV 납입회차]로 수정
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED
+            SET COLUMN_07 = COLUMN_08, COLUMN_04 = COLUMN_09
+            WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상') AND COLUMN_08 IS NOT NULL AND COLUMN_08 <> '';
+
+            -- Rule 3: [상태]=실효,연체,완납,정상이면
+            --  [소멸일자]값을 “0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_DBL_PROCESSED SET COLUMN_19 = '0000-00-00'
             WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상');
 
-            -- [Rule 4] [납입주기]=“일시납”이면 [보험료]=“0”으로 수정, [납입횟수]=“1”로 수정
+            -- Rule 4: [납입주기]=“일시납”이면
+            --  [보험료]=“0”으로 수정
+            --  [납입횟수]=“1”로 수정
             UPDATE T_TEMP_RPA_DBL_PROCESSED SET COLUMN_03 = '0', COLUMN_04 = '1'
             WHERE COLUMN_20 = '일시납';
 
-            -- [Rule 5] [상태]=실효 & [최종납입일자]=실효 3년 경과면, [상태]값을 “시효"로 변경
+            -- Rule 5:  [상태]=실효 & [최종납입월]=실효 3년 경과면, [상태]값을 “시효＂로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_DBL_PROCESSED SET COLUMN_18 = '시효'
             WHERE COLUMN_18 = '실효'
               AND COLUMN_26 IS NOT NULL AND COLUMN_26 <> ''
