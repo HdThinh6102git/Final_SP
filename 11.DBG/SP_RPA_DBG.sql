@@ -292,37 +292,47 @@ BEGIN
         
         -- [LTR Logic]
         IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납기구분 = 년납, 납입월 = 해당월, 납입일 = 영수일
+            -- Rule 1. 맨 마지막열 값 추가(3개)
+            -- ① 항목명I : 납기구분 / 항목값 : 년납
+            -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+            -- ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_30 = '년납', COLUMN_31 = v_target_ym, COLUMN_32 = COLUMN_01;
 
-            -- Rule 2: [상태]≠"정상, 철회, 해지" 삭제
+            -- Rule 2: [증권번호] 오름차순 정렬 후 [상태]≠"정상, 철회, 해지"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_26 NOT IN ('정상', '철회', '해지');
 
-            -- Rule 3: 중복 증권번호 처리
+            -- Rule 3: 중복 증권번호의 [상태]=각각"철회,정상"이면 [상태]="철회"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
             CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_15 FROM T_TEMP_RPA_DBG_PROCESSED GROUP BY COLUMN_15 HAVING SUM(COLUMN_26='철회')>0 AND SUM(COLUMN_26='정상')>0;
             UPDATE T_TEMP_RPA_DBG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_15 = d.COLUMN_15 SET t.COLUMN_26 = '철회';
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_15 IN (SELECT COLUMN_15 FROM tmp_dup_case) AND (COLUMN_18 LIKE '-%' OR CAST(REPLACE(COLUMN_18,',','') AS SIGNED) < 0);
 
-            -- Rule 4-5: 보험료 마이너스 -> 플러스
+            -- Rule 4: [보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_18 = CAST(ABS(CAST(REPLACE(COLUMN_18,',','') AS SIGNED)) AS CHAR) WHERE COLUMN_18 LIKE '-%';
+            -- Rule 5: [신규수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_20 = CAST(ABS(CAST(REPLACE(COLUMN_20,',','') AS SIGNED)) AS CHAR) WHERE COLUMN_20 LIKE '-%';
 
-            -- Rule 6: [책임개시일]≠해당월 삭제
+            -- Rule 6: [책임개시일]≠해당월 면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE LEFT(REPLACE(REPLACE(COLUMN_03, '-', ''), '.', ''), 6) <> v_target_ym;
 
         -- [CAR Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납입월 = 해당월, 납입일 = 영수일
+            -- Rule 1: 맨 마지막열 값 추가(2개)
+            -- ① 항목명I : 납입월 / 항목값 : 해당월(ex.202512)
+            -- ② 항목명II : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_30 = v_target_ym, COLUMN_31 = COLUMN_01;
 
-            -- Rule 2: [영수일]="빈값" 삭제
+            -- Rule 2: [영수일]="빈값"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_01 IS NULL OR TRIM(COLUMN_01) = '';
 
-            -- Rule 3: [상태]＝"계속,추징,추징/이체" 삭제
+            -- Rule 3: [증권번호] 오름차순 정렬 후 [상태]＝"계속,추징,추징/이체"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_26 IN ('계속', '추징', '추징/이체');
 
-            -- Rule 4: 중복 증권번호 처리
+            -- Rule 4: 중복 증권번호의 [상태]=각각"취소,정상"이면 [상태]="취소"로 값수정 및 [보험료]="마이너스금액"이면 데이터 행삭제
+            -- Rule 5: 중복 증권번호의 [상태]=모두"정상"이면 변경안함
+            -- →DB손보 자동차계약은 동일증번으로 세부구분이 책임일반/자동차 임의갱신으로 두건씩 발생하기도 함(철회건은 4건도 발생)
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
             CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_15 FROM T_TEMP_RPA_DBG_PROCESSED GROUP BY COLUMN_15 HAVING SUM(COLUMN_26='취소')>0 AND SUM(COLUMN_26='정상')>0;
             UPDATE T_TEMP_RPA_DBG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_15 = d.COLUMN_15 SET t.COLUMN_26 = '취소';
@@ -330,13 +340,15 @@ BEGIN
 
         -- [GEN Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule 1: 납입월 = 해당월, 납입일 = 영수일
+            -- Rule 1: 맨 마지막열 값 추가(2개)
+            -- ① 항목명I : 납입월 / 항목값 : 해당월(ex.202512)
+            -- ② 항목명II : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_30 = v_target_ym, COLUMN_31 = COLUMN_01;
 
-            -- Rule 2: [상태]＝"계속,추징" 삭제
+            -- Rule 2: [증권번호] 오름차순 정렬 후 [상태]＝"계속,추징"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_26 IN ('계속', '추징');
 
-            -- Rule 3: [영수일] 보정
+            -- Rule 3: [영수일]="빈값" & [입력일]="당월"이면 [영수일]=[입력일]로 값수정
             UPDATE T_TEMP_RPA_DBG_PROCESSED 
             SET COLUMN_01 = COLUMN_02, 
                 COLUMN_31 = COLUMN_02 

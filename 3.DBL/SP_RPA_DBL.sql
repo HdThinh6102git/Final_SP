@@ -164,7 +164,7 @@ BEGIN
             -- Rule 2: [상태]=실효,연체,완납,정상 & [UV종납년월]=값있음 이면
             -- ① [종납년월]값을 [UV종납년월]로 수정
             -- ② [납입횟수]값을 [UV 납입회차]로 수정
-            UPDATE T_TEMP_RPA_LIFE_PROCESSED
+            UPDATE T_TEMP_RPA_DBL_PROCESSED
             SET COLUMN_07 = COLUMN_08, COLUMN_04 = COLUMN_09
             WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상') AND COLUMN_08 IS NOT NULL AND COLUMN_08 <> '';
 
