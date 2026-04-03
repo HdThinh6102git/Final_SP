@@ -343,31 +343,41 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- [Rule 1 & 2-1] Delete Specific status (상태='청약심사')
-            DELETE FROM T_TEMP_RPA_MTL_PROCESSED WHERE COLUMN_07 = '청약심사';
+            -- Rule 1: 색필터 : 분홍색, 주황색 행삭제
+            -- Rule 2.1: [상태]=청약입력중 이면 데이터 행삭제
+            DELETE FROM T_TEMP_RPA_MTL_PROCESSED
+            WHERE (COLUMN_05 = '계') OR (COLUMN_07 = '청약입력중');
 
-            -- [Rule 2-2] 납입방법 (15) = '일시납' -> Update 납입기간 (14) = 0
+            -- Rule 2.2: [납입기간] =“일시납” 이면 “0”으로 값수정
             UPDATE T_TEMP_RPA_MTL_PROCESSED SET COLUMN_14 = '0' WHERE COLUMN_15 = '일시납';
 
-            -- [Rule 3] Add Extra Columns
+            -- Rule 3: 맨 마지막열 값 추가(3개)
+            -- ① 항목명I : 납기구분 / 항목값 : 년납
+            -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+            -- ③ 항목명III : 납입일자 / 항목값 : 계약일자와 동일한 값으로 반영
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_MTL_PROCESSED SET COLUMN_39 = '년납', COLUMN_40 = v_target_ym, COLUMN_41 = COLUMN_09;
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) IN ('EXT', 'EXISTING') THEN
-            -- [Rule 4] Delete Masking rows
-            DELETE FROM T_TEMP_RPA_MTL_PROCESSED WHERE COLUMN_01 = '마스킹';
-
-            -- [Rule 1] Contract Date before Oct 2021 -> 증권번호 = 8 digits (Right)
+            -- Rule 1: [계약일자]=“2021.10월 이전” 계약은 증권번호 8자리로 변경(right 8)
+            -- → 21.10월부터의 계약은 증권번호 수정 없음
             UPDATE T_TEMP_RPA_MTL_PROCESSED 
             SET COLUMN_01 = RIGHT(COLUMN_01, 8)
             WHERE REPLACE(REPLACE(LEFT(COLUMN_06, 7), '-', ''), '.', '') < '202110';
 
-            -- [Rule 2] 납입주기 (8) = '일시납' -> 보험료(KRW) (16)=0, 최종(유지)횟수 (27)=1
+            -- Rule 2: [납입주기]=“일시납” 이면
+            -- ① [보험료(KRW)]값을 “0”으로 수정
+            -- ② [최종(유지)횟수]값을 “1”로 수정
             UPDATE T_TEMP_RPA_MTL_PROCESSED SET COLUMN_16 = '0', COLUMN_27 = '1' WHERE COLUMN_08 = '일시납';
 
-            -- [Rule 3] 만기일자 (7) = '9999-02-29' -> '9999-02-28'
+            -- Rule 3: [만기일자]=“9999-02-29”이면 “9999-02-28”로 수정
             UPDATE T_TEMP_RPA_MTL_PROCESSED SET COLUMN_07 = '9999-02-28' WHERE COLUMN_07 = '9999-02-29';
 
-            -- [Rule 5] 상세상태 (31) = '실효' AND 최종납입일자 (25) <= 38 months -> 상태 (30) = '시효'
+            -- Rule 4: [증번]="마스킹"이면 데이터 행삭제
+            DELETE FROM T_TEMP_RPA_MTL_PROCESSED WHERE COLUMN_01 = '마스킹';
+
+            -- Rule 5: [계약상세상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_MTL_PROCESSED SET COLUMN_30 = '시효'
             WHERE COLUMN_31 = '실효'
               AND COLUMN_25 IS NOT NULL AND COLUMN_25 <> ''
