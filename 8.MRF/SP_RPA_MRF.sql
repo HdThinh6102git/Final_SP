@@ -265,25 +265,40 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- [Rule 1] LTR Extra Columns
+            -- Long Term Logic
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
+                -- Rule 1: 맨 마지막열 값 추가(2개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ※ 전체 행에 반영
                 UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_34 = '년납', COLUMN_35 = v_target_ym;
                 
-                -- [Rule 2] [영수] NOT IN '신계약','취소' -> 행 삭제
+                -- Rule 2: [증권번호] 오름차순 정렬 후 [영수]≠"신계약, 취소"면 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07 NOT IN ('신계약', '취소');
 
-                -- [Rule 3] [일자]!=해당월 & [상품명]!=실손 -> 행 삭제
+                -- Rule 3: [일자]≠해당월 & [상품명]≠실손이면 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED 
                 WHERE LEFT(REPLACE(COLUMN_01, '-', ''), 6) <> v_target_ym AND COLUMN_24 NOT LIKE '%실손%';
 
-                -- [Rule 4] 중복 편집
+                -- Rule 4: 증권번호 중복 편집
+                -- 중복 증권번호 중 [영수값]="신계약,취소"면 [영수값]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING SUM(COLUMN_07='신계약')>0 AND SUM(COLUMN_07='취소')>0;
                 UPDATE T_TEMP_RPA_MRF_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_02 = d.COLUMN_02 SET t.COLUMN_07 = '취소';
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_dup_case) AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
             
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-                -- [Rule 2] 증권번호 중복 편집
+                -- Rule 1: 맨 마지막열 값 추가(2개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ③ 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ※ 전체 행에 반영
+                UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_34 = '년납', COLUMN_35 = v_target_ym;
+
+                -- Rule 2: 증권번호 중복 편집
+                -- ① 계약번호 오름차순 정렬
+                -- ② 중복 계약번호 중 [영수]=모두 "배서"면 해당 데이터들 행삭제
+                -- ③ 중복 계약번호 중 [영수]=각각"신계약,배서"면 "배서" 데이터 행삭제
+                -- ④ 중복 계약번호 중 [영수]=각각"신계약,취소"면 [영수]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'배서')=0) AS t);
                 DELETE t FROM T_TEMP_RPA_MRF_PROCESSED t WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약') AS t);
                 
@@ -292,45 +307,56 @@ BEGIN
                 UPDATE T_TEMP_RPA_MRF_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_02 = d.COLUMN_02 SET t.COLUMN_07 = '취소';
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_dup_case) AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
 
-                -- [Rule 3] [보험료]="마이너스"이면 "플러스"값으로 수정
+                -- Rule 3: [보험료]="마이너스"이면 "플러스"값으로 수정
                 UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_03 = CAST(ABS(CAST(REPLACE(COLUMN_03, ',', '') AS SIGNED)) AS CHAR) WHERE COLUMN_03 LIKE '-%';
 
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                -- [Rule 2] 증권번호 중복 편집
+                -- Rule 1: 맨 마지막열 값 추가(2개)
+                -- ① 항목명I : 납기구분 / 항목값 : 년납
+                -- ③ 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                -- ※ 전체 행에 반영
+                UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_34 = '년납', COLUMN_35 = v_target_ym;
+
+                -- Rule 2: 증권번호 중복 편집
+                -- ① 계약번호 오름차순 정렬
+                -- ② 중복 계약번호의 [영수]=모두 "정상"면 해당 데이터들 행삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'정상')=0) AS t);
+                -- ③ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
                 DELETE t FROM T_TEMP_RPA_MRF_PROCESSED t WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약') AS t);
-                
+                -- ④ 중복 계약번호 중 [계약상태]=각각"신계약,취소"면 [영수]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING SUM(COLUMN_07='신계약')>0 AND SUM(COLUMN_07='취소')>0;
                 UPDATE T_TEMP_RPA_MRF_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_02 = d.COLUMN_02 SET t.COLUMN_07 = '취소';
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_dup_case) AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
-                
-                -- ⑤ 청약일!=해당월 & [보험료]=음수 행 삭제
+                -- ⑤ 청약일≠해당월 & [보험료]="마이너스금액" 데이터 행삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE LEFT(REPLACE(COLUMN_28, '-', ''), 6) <> v_target_ym AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
             END IF;
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) IN ('EXT', 'EXISTING') AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-            -- 1. [계약상태상세명] IN '정상, 해지, 해지불능' -> [소멸실효일자]='0000-00-00'
+            -- Rule 1: [계약상태명]=“정상,해지,해지불능”이면 [소멸실효일자]를 “0000-00-00”으로 값수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_54 = '0000-00-00' WHERE COLUMN_56 IN ('정상', '해지', '해지불능');
 
-            -- 2. [최종납입년월] 연체건 처리
+            -- Rule 2: [계약상세상태명]=“모든 완납, 모든 납입면제 제외” 후 [계약상태명]="정상"건만 추출하여 [최종납입년월] 연체건은 [계약상태명]값을 "연체"로 값수정
+            -- 연체기준 : 최종납입월도가 마감월도보다 작은 경우(예시, 최종납입월도 2025.12 / 마감월도 2026.01 → 연체)
+
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_53 = '연체'
             WHERE COLUMN_56 NOT LIKE '%완납%' AND COLUMN_56 NOT LIKE '%납입면제%' AND COLUMN_53 = '정상'
               AND DATE_FORMAT(STR_TO_DATE(COLUMN_08, '%c/%e/%Y'), '%Y%m') < v_target_ym;
 
-            -- 3. [계약상세상태명]='중지' -> [계약상태명]='정상'
+            -- Rule 3: [계약상세상태명]=“중지＂이면, [계약상태명]값을 "정상"으로 값수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_53 = '정상' WHERE COLUMN_56 = '중지';
 
-            -- 4. Ngày tháng chuẩn hóa (M/D/YYYY -> YYYY-MM-DD)
+            -- Rule 4: [청약일자],[보험개시일자],[보험종료일자]를 간단한날짜 서식으로 변경
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET 
                 COLUMN_04 = DATE_FORMAT(STR_TO_DATE(COLUMN_04, '%c/%e/%Y'), '%Y-%m-%d'),
                 COLUMN_06 = DATE_FORMAT(STR_TO_DATE(COLUMN_06, '%c/%e/%Y'), '%Y-%m-%d'),
                 COLUMN_07 = DATE_FORMAT(STR_TO_DATE(COLUMN_07, '%c/%e/%Y'), '%Y-%m-%d');
 
-            -- 5. [계약상세상태명] IN '취소, 철회' -> [최종납입일자]=[청약일자]
+            -- Rule 5: [계약상세상태명]=“취소,철회”이면, [최종납입일자]="계약일자"로 값수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_55 = COLUMN_04 WHERE COLUMN_56 IN ('취소', '철회');
 
-            -- 6. [시효] 처리 (실효 & 38개월 경과)
+            -- Rule 6: [계약상세상태명]=“실효” & [최종납입년월]=“실효 3년 경과”면, [계약상태명]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_53 = '시효'
             WHERE COLUMN_56 = '실효' AND DATE_FORMAT(STR_TO_DATE(COLUMN_08, '%c/%e/%Y'), '%Y%m') <= v_cutoff_ym;
         END IF;
