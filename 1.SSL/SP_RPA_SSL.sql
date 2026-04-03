@@ -245,7 +245,9 @@ BEGIN
         
         -- [NEW Logic]
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- Rule: 납기구분 고정값 '년납'
+            -- Rule 1: 맨 마지막열 값 추가(1개)
+            -- ① 항목명 : 납기구분 / 항목값 : 년납
+            -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_SSL_PROCESSED SET COLUMN_29 = '년납';
         END IF;
 
@@ -261,43 +263,48 @@ BEGIN
                 ELSE REGEXP_REPLACE(COLUMN_10, '[^0-9]', '')
             END;
 
-            -- Rule 2: 종납일자 Update based on status (Ban-song / Cheol-hui)
+            -- Rule 2: 종납일자 “0000-00-00” 추출 후 
+            --    → [보험계약상태]=“반송/철회”면, [종납일자]에 [계약일자]로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_24 = COLUMN_14
             WHERE COLUMN_24 = '0000-00-00'
               AND (COLUMN_22 LIKE '%반송%' OR COLUMN_22 LIKE '%철회%');
 
-            -- Rule 3.1: Final Payment Year/Month - Empty or Null handling
+            -- Rule 3: 최종납입년월 편집
+            -- Rule 3.1: ① [최종납입년월] “빈셀” 추출 후 
+            --    → [보험계약상태]=“반송/철회”면, [최종납입년월]에 “계약년월＂로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_15 = DATE_FORMAT(COLUMN_14, '%Y-%m')
             WHERE (COLUMN_15 IS NULL OR COLUMN_15 = '')
               AND (COLUMN_22 LIKE '%반송%' OR COLUMN_22 LIKE '%철회%');
 
-            -- Rule 3.2: Final Payment Year/Month - Normal status adjustment
+            -- Rule 3.2: [최종납입년월]이 실효해당월인데 [보험계약상태]=“정상”인 경우
+            --    → [최종납입년월]에 [유지년월] 값으로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_15 = COLUMN_26
             WHERE COLUMN_15 = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH), '%Y-%m')
               AND COLUMN_22 LIKE '%정상%';
 
-            -- Rule 3.3: Final Payment Year/Month - 6-month or 12-month payments
+            -- Rule 3.3: [납입주기]=“6개월/12월납”이면, [최종납입년월]에 [유지년월] 값으로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_15 = COLUMN_26
             WHERE COLUMN_20 IN ('6월납', '12월납');
 
-            -- Rule 4: Payment Count 0 -> 1
+            -- Rule 4: [종납횟수]=“0”이면, “1”로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED SET COLUMN_25 = '1' WHERE COLUMN_25 = '0';
 
-            -- Rule 5: One-time payment (Il-si-nap) -> Total Premium 0, Count 1
+            -- Rule 5: [납입주기]=“일시납”이면, [합계보험료] 값을 “0”으로 / [종납횟수] 값을 “1”로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED SET COLUMN_16 = '0', COLUMN_25 = '1' WHERE COLUMN_20 = '일시납';
 
-            -- Rule 6: Group Welfare / Group Insurance + Cancellation (Hae-ji)
+            -- Rule 6: [상품명]=“기업복지 또는 단체보장” & [보험계약상태]="해지"면, [소멸년월]YYYYMM과 [최종납입년월]YYYYMM을 비교(소멸년월>최종납입년월) → FALSE 데이터의 [최종납입년월]을 [소멸월도]로 값수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_15 = LEFT(COLUMN_23, 7)
             WHERE (COLUMN_13 LIKE '%기업복지%' OR COLUMN_13 LIKE '%단체보장%')
               AND COLUMN_22 = '해지'
               AND DATE_FORMAT(COLUMN_23, '%Y%m') <= REPLACE(COLUMN_15, '-', '');
 
-            -- Rule 7: Status Effective -> Statute of Limitations (38 months)
+            -- Rule 7: [보험계약상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [보험계약상태상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_22 = '시효'
             WHERE COLUMN_22 = '실효'
