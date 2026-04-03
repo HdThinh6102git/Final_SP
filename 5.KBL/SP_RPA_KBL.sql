@@ -322,6 +322,18 @@ BEGIN
             -- [Rule 3] [납입방법](23)="일시납"이면 (1) [보험료](12)="0" (2) [최종횟수](18)="1"
             UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_12 = '0', COLUMN_18 = '1' 
             WHERE COLUMN_23 = '일시납';
+
+            -- [Rule 4] [계약상태]="신계약" & [최종납입월] (yyyy-mm) =2개월전 -> [계약상태]="실효".
+            UPDATE T_TEMP_RPA_KBL_PROCESSED SET COLUMN_11 = '실효'
+            WHERE COLUMN_11 = '신계약'
+              AND REPLACE(COLUMN_16, '-', '') = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 2 MONTH), '%Y%m');
+
+            -- [Rule 5] [계약상태]="실효" & 실효 3년 경과(38개월) -> [계약상태]="시효"
+            UPDATE T_TEMP_RPA_KBL_PROCESSED
+            SET COLUMN_11 = '시효'
+            WHERE COLUMN_11 IN ('실효(환급금없는실효)', '실효(환급금있는실효)')
+              AND COLUMN_16 IS NOT NULL
+              AND REPLACE(SUBSTRING(COLUMN_16, 1, 7), '-', '') <= v_cutoff_ym;
         END IF;
 
         -- 4. Build sql query insert processed table

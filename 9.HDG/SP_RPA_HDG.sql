@@ -283,6 +283,19 @@ BEGIN
             END IF;
 
             -- [Rule 2] [계약번호] 정렬 후 [배서구분] IN ('추징', '환급') 행 삭제
+            -- 2-1: Sort by Policy Number (COLUMN_12)
+            DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+            CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
+            INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
+            DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
+            INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
+            DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
+
+            -- 2-2: Reset SORT_ORDER_NO sequentially
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
+
+            -- 2-3: Delete deletions
             DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
 
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN

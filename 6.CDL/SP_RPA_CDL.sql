@@ -330,7 +330,7 @@ BEGIN
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             -- [Rule 1] 맨 마지막열 값 추가 (납기구분 = 년납)
-            UPDATE T_TEMP_RPA_LIFE_PROCESSED SET COLUMN_39 = '년납';
+            UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_39 = '년납';
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             -- [Rule 1] [계약상태]="정상(유지),실효,정상화기간,효력상실" -> [계약변경일자](09)="0000-00-00"
