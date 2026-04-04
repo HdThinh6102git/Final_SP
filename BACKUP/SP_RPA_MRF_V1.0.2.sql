@@ -8,28 +8,18 @@ BEGIN
     DECLARE v_raw_cols     TEXT         DEFAULT '';
     DECLARE v_proc_cols    TEXT         DEFAULT '';
     DECLARE v_sql_query    TEXT         DEFAULT '';
-    DECLARE v_raw_table    VARCHAR(100) DEFAULT '';
+    DECLARE v_raw_table    VARCHAR(100) DEFAULT 'T_RPA_MERITZ_RAW';
     DECLARE v_proc_table   VARCHAR(100) DEFAULT '';
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'MRF';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
     DECLARE v_cutoff_ym    VARCHAR(6)   DEFAULT '';
-    
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw    INT          DEFAULT 0;
-    DECLARE v_log_temp_initial   INT          DEFAULT 0;
-    DECLARE v_log_after_rule2    INT          DEFAULT 0;
-    DECLARE v_log_after_rule3    INT          DEFAULT 0;
-    DECLARE v_log_after_rule4    INT          DEFAULT 0;
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MRF_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
     END;
 
     -- [SET internal logic]
@@ -39,26 +29,12 @@ BEGIN
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-        SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
         SET v_proc_table = 'T_RPA_LONG_TERM_PROCESSED';
     ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-        SET v_raw_table = 'T_RPA_CAR_RAW';
         SET v_proc_table = 'T_RPA_CAR_PROCESSED';
     ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-        SET v_raw_table = 'T_RPA_GENERAL_RAW';
         SET v_proc_table = 'T_RPA_GENERAL_PROCESSED';
     END IF;
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID VARCHAR(100),
-        COMPANY_CODE VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE VARCHAR(20),
-        STEP_NAME VARCHAR(100),
-        ROW_COUNT INT,
-        LOG_TIME DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping for Meritz Fire (MRF)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -270,7 +246,7 @@ BEGIN
         PREPARE stmt_create FROM @sql_create;
         EXECUTE stmt_create;
         DEALLOCATE PREPARE stmt_create;
-        
+
         -- Insert into Temporary Table
         SET @sql_query = CONCAT(
             'INSERT INTO T_TEMP_RPA_MRF_PROCESSED (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
@@ -278,172 +254,86 @@ BEGIN
             'FROM ', v_raw_table, ' ',
             'WHERE COMPANY_CODE = ''MRF'' ',
             '  AND BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
+            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
+            '  AND COLUMN_01 <> ''일자'';'
         );
         
         PREPARE stmt FROM @sql_query;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture Initial Raw and Temp counts
-        SET @sql_raw_count = CONCAT('SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table, ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') AND COMPANY_CODE = ''MRF''');
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-        
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_MRF_PROCESSED;
-        
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            -- [DEBUG] Entry into NEW block
-            SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_MRF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'ENTER_NEW_BLOCK', v_log_temp_initial, NOW());
-            
-            -- Long Term Logic
+            -- [Rule 1] LTR Extra Columns
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-                -- Rule 1: 맨 마지막열 값 추가(2개)
-                -- ① 항목명I : 납기구분 / 항목값 : 년납
-                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                -- ※ 전체 행에 반영
                 UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_34 = '년납', COLUMN_35 = v_target_ym;
                 
-                -- Rule 2: [증권번호] 오름차순 정렬 후 [영수]≠"신계약, 취소"면 데이터 행삭제
+                -- [Rule 2] [영수] NOT IN '신계약','취소' -> 행 삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07 NOT IN ('신계약', '취소');
 
-                -- Rule 3: [일자]≠해당월 & [상품명]≠실손이면 데이터 행삭제
+                -- [Rule 3] [일자]!=해당월 & [상품명]!=실손 -> 행 삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED 
                 WHERE LEFT(REPLACE(COLUMN_01, '-', ''), 6) <> v_target_ym AND COLUMN_24 NOT LIKE '%실손%';
 
-                -- Rule 4: 증권번호 중복 편집
-                -- 중복 증권번호 중 [영수값]="신계약,취소"면 [영수값]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
+                -- [Rule 4] 중복 편집
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING SUM(COLUMN_07='신계약')>0 AND SUM(COLUMN_07='취소')>0;
                 UPDATE T_TEMP_RPA_MRF_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_02 = d.COLUMN_02 SET t.COLUMN_07 = '취소';
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_dup_case) AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
             
-                -- [DEBUG] Capture LTR Rule 4 count
-                SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_MRF_PROCESSED;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_LTR_RULE4', v_log_after_rule4, NOW());
-
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-                -- [DEBUG] Entry into CAR block
-                SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_MRF_PROCESSED;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'ENTER_CAR_BLOCK', v_log_after_rule2, NOW());
-
-                -- Rule 1: 맨 마지막열 값 추가(2개)
-                -- ① 항목명I : 납기구분 / 항목값 : 년납
-                -- ③ 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                -- ※ 전체 행에 반영
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_BEFORE_RULE1_UPDATE', v_log_after_rule2, NOW());
-                UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_34 = '년납', COLUMN_35 = v_target_ym;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_AFTER_RULE1_UPDATE', v_log_after_rule2, NOW());
-
-                -- Rule 2: 증권번호 중복 편집
-                -- ① 계약번호 오름차순 정렬
-                -- ② 중복 계약번호 중 [영수]=모두 "배서"면 해당 데이터들 행삭제
-                -- ③ 중복 계약번호 중 [영수]=각각"신계약,배서"면 "배서" 데이터 행삭제
-                -- ④ 중복 계약번호 중 [영수]=각각"신계약,취소"면 [영수]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_BEFORE_RULE2_DELETE1', 31, NOW());
-                -- MySQL Delete Limitation: Use a separate temp table instead of aliased subquery
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-                CREATE TEMPORARY TABLE tmp_del_t1 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'배서')=0;
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t1);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_BEFORE_RULE2_DELETE2', 31, NOW());
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
-                CREATE TEMPORARY TABLE tmp_del_t2 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약';
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t2);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
+                -- [Rule 2] 증권번호 중복 편집
+                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'배서')=0) AS t);
+                DELETE t FROM T_TEMP_RPA_MRF_PROCESSED t WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약') AS t);
                 
-                -- [DEBUG] Capture CAR Rule 2 (Deletes 1-2) count
-                SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_MRF_PROCESSED;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_CAR_RULE2_DELETES', v_log_after_rule2, NOW());
-
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING SUM(COLUMN_07='신계약')>0 AND SUM(COLUMN_07='취소')>0;
                 UPDATE T_TEMP_RPA_MRF_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_02 = d.COLUMN_02 SET t.COLUMN_07 = '취소';
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_dup_case) AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
 
-                -- Rule 3: [보험료]="마이너스"이면 "플러스"값으로 수정
+                -- [Rule 3] [보험료]="마이너스"이면 "플러스"값으로 수정
                 UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_03 = CAST(ABS(CAST(REPLACE(COLUMN_03, ',', '') AS SIGNED)) AS CHAR) WHERE COLUMN_03 LIKE '-%';
 
-                -- [DEBUG] Capture CAR Rule counts
-                SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_MRF_PROCESSED;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_CAR_LOGIC', v_log_after_rule3, NOW());
-
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                -- Rule 1: 맨 마지막열 값 추가(2개)
-                -- ① 항목명I : 납기구분 / 항목값 : 년납
-                -- ③ 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                -- ※ 전체 행에 반영
-                UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_34 = '년납', COLUMN_35 = v_target_ym;
-
-                -- Rule 2: 증권번호 중복 편집
-                -- ① 계약번호 오름차순 정렬
-                -- ② 중복 계약번호의 [영수]=모두 "정상"면 해당 데이터들 행삭제
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_GEN_RULE2_DELETES', v_log_after_rule2, NOW());
-                -- MySQL Delete Limitation: Use a separate temp table instead of aliased subquery
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-                CREATE TEMPORARY TABLE tmp_del_t1 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'정상')=0;
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t1);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-
-                -- ③ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
-                CREATE TEMPORARY TABLE tmp_del_t2 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약';
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t2);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
-                -- ④ 중복 계약번호 중 [계약상태]=각각"신계약,취소"면 [영수]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
+                -- [Rule 2] 증권번호 중복 편집
+                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'정상')=0) AS t);
+                DELETE t FROM T_TEMP_RPA_MRF_PROCESSED t WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약') AS t);
+                
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING SUM(COLUMN_07='신계약')>0 AND SUM(COLUMN_07='취소')>0;
                 UPDATE T_TEMP_RPA_MRF_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_02 = d.COLUMN_02 SET t.COLUMN_07 = '취소';
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_dup_case) AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
-                -- ⑤ 청약일≠해당월 & [보험료]="마이너스금액" 데이터 행삭제
+                
+                -- ⑤ 청약일!=해당월 & [보험료]=음수 행 삭제
                 DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE LEFT(REPLACE(COLUMN_28, '-', ''), 6) <> v_target_ym AND (COLUMN_03 LIKE '-%' OR CAST(REPLACE(COLUMN_03,',','') AS SIGNED) < 0);
-
-                -- [DEBUG] Capture GEN Final logic count
-                SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_MRF_PROCESSED;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_GEN_LOGIC', v_log_after_rule3, NOW());
             END IF;
 
-        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-            -- Rule 1: [계약상태명]=“정상,해지,해지불능”이면 [소멸실효일자]를 “0000-00-00”으로 값수정
+        ELSEIF UPPER(IN_CONTRACT_TYPE) IN ('EXT', 'EXISTING') AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
+            -- 1. [계약상태상세명] IN '정상, 해지, 해지불능' -> [소멸실효일자]='0000-00-00'
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_54 = '0000-00-00' WHERE COLUMN_56 IN ('정상', '해지', '해지불능');
 
-            -- Rule 2: [계약상세상태명]=“모든 완납, 모든 납입면제 제외” 후 [계약상태명]="정상"건만 추출하여 [최종납입년월] 연체건은 [계약상태명]값을 "연체"로 값수정
-            -- 연체기준 : 최종납입월도가 마감월도보다 작은 경우(예시, 최종납입월도 2025.12 / 마감월도 2026.01 → 연체)
-
+            -- 2. [최종납입년월] 연체건 처리
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_53 = '연체'
             WHERE COLUMN_56 NOT LIKE '%완납%' AND COLUMN_56 NOT LIKE '%납입면제%' AND COLUMN_53 = '정상'
               AND DATE_FORMAT(STR_TO_DATE(COLUMN_08, '%c/%e/%Y'), '%Y%m') < v_target_ym;
 
-            -- Rule 3: [계약상세상태명]=“중지＂이면, [계약상태명]값을 "정상"으로 값수정
+            -- 3. [계약상세상태명]='중지' -> [계약상태명]='정상'
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_53 = '정상' WHERE COLUMN_56 = '중지';
 
-            -- Rule 4: [청약일자],[보험개시일자],[보험종료일자]를 간단한날짜 서식으로 변경
+            -- 4. Ngày tháng chuẩn hóa (M/D/YYYY -> YYYY-MM-DD)
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET 
                 COLUMN_04 = DATE_FORMAT(STR_TO_DATE(COLUMN_04, '%c/%e/%Y'), '%Y-%m-%d'),
                 COLUMN_06 = DATE_FORMAT(STR_TO_DATE(COLUMN_06, '%c/%e/%Y'), '%Y-%m-%d'),
                 COLUMN_07 = DATE_FORMAT(STR_TO_DATE(COLUMN_07, '%c/%e/%Y'), '%Y-%m-%d');
 
-            -- Rule 5: [계약상세상태명]=“취소,철회”이면, [최종납입일자]="계약일자"로 값수정
+            -- 5. [계약상세상태명] IN '취소, 철회' -> [최종납입일자]=[청약일자]
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_55 = COLUMN_04 WHERE COLUMN_56 IN ('취소', '철회');
 
-            -- Rule 6: [계약상세상태명]=“실효” & [최종납입년월]=“실효 3년 경과”면, [계약상태명]값을 “시효”로 변경
-            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
+            -- 6. [시효] 처리 (실효 & 38개월 경과)
             UPDATE T_TEMP_RPA_MRF_PROCESSED SET COLUMN_53 = '시효'
             WHERE COLUMN_56 = '실효' AND DATE_FORMAT(STR_TO_DATE(COLUMN_08, '%c/%e/%Y'), '%Y%m') <= v_cutoff_ym;
         END IF;
-
-        -- [DEBUG] Count before final insert
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_MRF_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
 
         -- 4. Build sql query insert processed table
         SET @sql_insert = CONCAT(

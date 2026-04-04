@@ -28,8 +28,6 @@ BEGIN
         INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MRF_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
     END;
 
     -- [SET internal logic]
@@ -349,17 +347,9 @@ BEGIN
                 -- ③ 중복 계약번호 중 [영수]=각각"신계약,배서"면 "배서" 데이터 행삭제
                 -- ④ 중복 계약번호 중 [영수]=각각"신계약,취소"면 [영수]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_BEFORE_RULE2_DELETE1', 31, NOW());
-                -- MySQL Delete Limitation: Use a separate temp table instead of aliased subquery
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-                CREATE TEMPORARY TABLE tmp_del_t1 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'배서')=0;
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t1);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-
+                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'배서')=0) AS t);
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_BEFORE_RULE2_DELETE2', 31, NOW());
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
-                CREATE TEMPORARY TABLE tmp_del_t2 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약';
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t2);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
+                DELETE t FROM T_TEMP_RPA_MRF_PROCESSED t WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약') AS t);
                 
                 -- [DEBUG] Capture CAR Rule 2 (Deletes 1-2) count
                 SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_MRF_PROCESSED;
@@ -387,18 +377,13 @@ BEGIN
                 -- Rule 2: 증권번호 중복 편집
                 -- ① 계약번호 오름차순 정렬
                 -- ② 중복 계약번호의 [영수]=모두 "정상"면 해당 데이터들 행삭제
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_GEN_RULE2_DELETES', v_log_after_rule2, NOW());
-                -- MySQL Delete Limitation: Use a separate temp table instead of aliased subquery
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-                CREATE TEMPORARY TABLE tmp_del_t1 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'정상')=0;
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t1);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t1;
-
+                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING COUNT(*)>1 AND SUM(COLUMN_07<>'정상')=0) AS t);
                 -- ③ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
-                CREATE TEMPORARY TABLE tmp_del_t2 SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약';
-                DELETE FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_del_t2);
-                DROP TEMPORARY TABLE IF EXISTS tmp_del_t2;
+                DELETE t FROM T_TEMP_RPA_MRF_PROCESSED t WHERE COLUMN_07 = '배서' AND COLUMN_02 IN (SELECT * FROM (SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED WHERE COLUMN_07='신계약') AS t);
+                
+                -- [DEBUG] Capture GEN Rule 2 (Deletes 1-2) count
+                SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_MRF_PROCESSED;
+                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MRF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_GEN_RULE2_DELETES', v_log_after_rule2, NOW());
                 -- ④ 중복 계약번호 중 [계약상태]=각각"신계약,취소"면 [영수]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_02 FROM T_TEMP_RPA_MRF_PROCESSED GROUP BY COLUMN_02 HAVING SUM(COLUMN_07='신계약')>0 AND SUM(COLUMN_07='취소')>0;
