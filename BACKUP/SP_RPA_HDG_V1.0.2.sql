@@ -8,24 +8,18 @@ BEGIN
     DECLARE v_raw_cols     TEXT         DEFAULT '';
     DECLARE v_proc_cols    TEXT         DEFAULT '';
     DECLARE v_sql_query    TEXT         DEFAULT '';
-    DECLARE v_raw_table    VARCHAR(100) DEFAULT '';
+    DECLARE v_raw_table    VARCHAR(100) DEFAULT 'T_RPA_HYUNDAI_RAW';
     DECLARE v_proc_table   VARCHAR(100) DEFAULT '';
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'HDG';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
-    DECLARE v_log_initial_raw   INT DEFAULT 0;
-    DECLARE v_log_temp_initial  INT DEFAULT 0;
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        -- [DEBUG] Log exception
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HDG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
         DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-        DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-        DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen;
     END;
 
     -- [SET internal logic]
@@ -33,34 +27,12 @@ BEGIN
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-        SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
         SET v_proc_table = 'T_RPA_LONG_TERM_PROCESSED';
     ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-        SET v_raw_table = 'T_RPA_CAR_RAW';
         SET v_proc_table = 'T_RPA_CAR_PROCESSED';
     ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-        SET v_raw_table = 'T_RPA_GENERAL_RAW';
         SET v_proc_table = 'T_RPA_GENERAL_PROCESSED';
     END IF;
-
-    -- [DEBUG] Initialize Debug Log Table
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID VARCHAR(100),
-        COMPANY_CODE VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE VARCHAR(20),
-        STEP_NAME VARCHAR(100),
-        ROW_COUNT INT,
-        LOG_TIME DATETIME
-    );
-
-    -- [DEBUG] Record INITIAL_RAW
-    SET @sql_count_raw = CONCAT('SELECT COUNT(*) INTO @v_log_initial_raw FROM ', v_raw_table, ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' AND COMPANY_CODE = ''HDG''');
-    PREPARE stmt_count FROM @sql_count_raw;
-    EXECUTE stmt_count;
-    DEALLOCATE PREPARE stmt_count;
-    SET v_log_initial_raw = @v_log_initial_raw;
-    INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
 
     -- 1. Hardcoded Column Mapping for Hyundai Marine (HDG)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -297,148 +269,63 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Record TEMP_INITIAL
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_HDG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-            
+            -- [Rule 1] Extra Columns
+            UPDATE T_TEMP_RPA_HDG_PROCESSED 
+            SET COLUMN_54 = '년납', 
+                COLUMN_55 = v_target_ym, 
+                COLUMN_56 = COLUMN_01;
+
+            IF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
+                UPDATE T_TEMP_RPA_HDG_PROCESSED SET COLUMN_57 = '일시납';
+            END IF;
+
+            -- [Rule 2] [계약번호] 정렬 후 [배서구분] IN ('추징', '환급') 행 삭제
+            DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
 
             IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-                -- Rule 1: 맨 마지막열 값 추가(3개)
-                -- ① 항목명I : 납기구분 / 항목값 : 년납
-                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                -- ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
-                -- ※ 전체 행에 반영
-                UPDATE T_TEMP_RPA_HDG_PROCESSED
-                SET COLUMN_54 = '년납', 
-                    COLUMN_55 = v_target_ym, 
-                    COLUMN_56 = COLUMN_01;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE1', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-
-                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]="추징,환급"이면 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-
-                -- 2-2: Reset SORT_ORDER_NO sequentially
-                SET @seq := 0;
-                UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
-
-                -- 2-3: Delete deletions
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE2', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-
                 -- [Rule 3] 중복 계약번호: '철회' + '정상' 처리
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='철회')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '철회';
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE3', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
                 
-                -- [DEBUG] Trace sample value of COLUMN_03 and v_target_ym
-                SELECT COLUMN_03 INTO @sample_col03 FROM T_TEMP_RPA_HDG_PROCESSED LIMIT 1;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, CONCAT('DEBUG_LTR_DATE: ', COALESCE(@sample_col03, 'NULL'), ' / Target: ', v_target_ym), 0, NOW());
-
                 -- [Rule 4] [개시일]!=해당월 행 삭제
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE LEFT(COLUMN_03, 6) <> v_target_ym;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE4', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
 
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-
-                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-
-                -- 2-2: Reset SORT_ORDER_NO sequentially
-                SET @seq := 0;
-                UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
-
-                -- 2-3: Delete deletions
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_AFTER_RULE2', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-
-                -- Rule 3: 계약번호 중복 편집
-                -- 중복 계약번호의 [배서구분]=각각"취소,정상"이면 [배서구분]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
-
+                -- [Rule 3] 중복 계약번호: '취소' + '정상' 처리
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='취소')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '취소';
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_AFTER_RULE3', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
                 
-                -- Rule 4: [계약구분]="공동인수"이면 중복증번의 [공동인수보험료]와 [수정보험료] 값을 각각 합하여 [공동인수보험료],[수정보험료]로 값수정해주고 [보험료]값도 수정한 [공동인수보험료]로 변경해줌
+                -- [Rule 4] [계약구분]="공동인수" 합산
                 DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
                 CREATE TEMPORARY TABLE tmp_agg_data
                 SELECT COLUMN_12, SUM(CAST(REPLACE(IFNULL(COLUMN_29,'0'),',','') AS SIGNED)) AS s29, SUM(CAST(REPLACE(IFNULL(COLUMN_24,'0'),',','') AS SIGNED)) AS s24, MIN(SYS_ID) AS mid
                 FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_32 LIKE '%공동인수%' GROUP BY COLUMN_12 HAVING COUNT(*)>1;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_29 = CAST(a.s29 AS CHAR), t.COLUMN_24 = CAST(a.s24 AS CHAR), t.COLUMN_19 = CAST(a.s29 AS CHAR);
                 DELETE t FROM T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_12 = a.COLUMN_12 WHERE t.SYS_ID <> a.mid;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_AFTER_RULE4', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
 
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                -- Rule 1: 맨 마지막열 값 추가(3개)
-                -- ① 항목명I : 납기구분 / 항목값 : 년납
-                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                -- ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
-                -- ④ 항목명IV : 납입주기 / 항목값 : 일시납
-                -- ※ 전체 행에 반영
-                UPDATE T_TEMP_RPA_HDG_PROCESSED
-                SET COLUMN_54 = '년납', 
-                    COLUMN_55 = v_target_ym, 
-                    COLUMN_56 = COLUMN_01,
-                    COLUMN_57 = '일시납';
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'GEN_AFTER_RULE1', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-
-                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-
-                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
-                SET @seq := 0;
-                UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
-
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'GEN_AFTER_RULE2', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-
-                -- Rule 3: 계약번호 중복 편집
-                -- Rule 3.1: 중복 계약번호의 [배서구분]=각각"취소,정상"이면 [배서구분]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
+                -- [Rule 3-1] '취소' + '정상' 처리
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='취소')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '취소';
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
                 
-                -- Rule 3.2: 중복 계약번호의 [배서구분]=모두 "정상"인 증번들은 [보험료]와 [수정보험료]를 합하여 한건으로 값수정
-                DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen;
-                CREATE TEMPORARY TABLE tmp_dup_gen SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING COUNT(*)>1 AND SUM(COLUMN_31<>'정상')=0;
-
+                -- [Rule 3-2] 모두 '정상'인 경우 합산 처리 (19 + 24)
                 DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
                 CREATE TEMPORARY TABLE tmp_agg_data
                 SELECT COLUMN_12, SUM(CAST(REPLACE(IFNULL(COLUMN_19,'0'),',','') AS SIGNED)) AS s19, SUM(CAST(REPLACE(IFNULL(COLUMN_24,'0'),',','') AS SIGNED)) AS s24, MIN(SYS_ID) AS mid
-                FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_gen) GROUP BY COLUMN_12;
+                FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING COUNT(*)>1 AND SUM(COLUMN_31<>'정상')=0) GROUP BY COLUMN_12;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_19 = CAST(a.s19 AS CHAR), t.COLUMN_24 = CAST(a.s24 AS CHAR);
                 DELETE t FROM T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_12 = a.COLUMN_12 WHERE t.SYS_ID <> a.mid;
-                INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'GEN_AFTER_RULE3', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-                DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen;
             END IF;
         END IF;
-
-        -- [DEBUG] Record final state
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_HDG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
 
         -- 4. Build sql query insert processed table
         SET @sql_insert = CONCAT(
@@ -456,8 +343,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HDG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
         DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-        DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-        DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen;
 
     END IF;
 
