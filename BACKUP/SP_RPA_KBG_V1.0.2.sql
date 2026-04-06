@@ -13,35 +13,19 @@ BEGIN
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'KBG';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
-    -- [DECLARE debug logs]
-    DECLARE v_log_initial_raw INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        -- [DEBUG] Log exception
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_KBG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
         DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_car;
     END;
 
     -- [SET logic]
     SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
 
-    -- [DEBUG] Initialize Log Table
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID VARCHAR(100),
-        COMPANY_CODE VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE VARCHAR(20),
-        STEP_NAME VARCHAR(100),
-        ROW_COUNT INT,
-        LOG_TIME DATETIME
-    );
+    -- 1. Hardcoded Column Mapping for KB Insurance (KBG)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         
         -- Mapping for LTR (Columns 01-28 + Target-only 29, 30, 31)
@@ -369,21 +353,12 @@ BEGIN
             'FROM ', v_raw_table, ' ',
             'WHERE COMPANY_CODE = ''KBG'' ',
             '  AND BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            '  AND COLUMN_08 <> ''증권번호'';'
+            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
         );
         
         PREPARE stmt FROM @sql_query;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
-
-        -- [DEBUG] Capture Initial Counts
-        SET @sql_raw_count = CONCAT('SELECT COUNT(*) INTO @raw_count FROM ', v_raw_table, ' WHERE COMPANY_CODE = ''KBG'' AND BATCH_ID = ''', IN_BATCH_ID, ''' AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''')');
-        PREPARE stmt_rc FROM @sql_raw_count; EXECUTE stmt_rc; DEALLOCATE PREPARE stmt_rc;
-        SET v_log_initial_raw = @raw_count;
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_KBG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
 
         -- 3. Apply Transformation Logic
         
@@ -392,46 +367,25 @@ BEGIN
             -- Rule 1: 납기구분 = 년납, 납입월 = 해당월, 납입일 = 회계일(09)
             UPDATE T_TEMP_RPA_KBG_PROCESSED SET COLUMN_29 = '년납', COLUMN_30 = v_target_ym, COLUMN_31 = COLUMN_09;
 
-            -- [DEBUG] Trace sample value of COLUMN_12 and v_target_ym
-            SELECT COLUMN_12 INTO @sample_col12 FROM T_TEMP_RPA_KBG_PROCESSED LIMIT 1;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, CONCAT('DEBUG_LTR_DATE: ', COALESCE(@sample_col12, 'NULL'), ' / Target: ', v_target_ym), 0, NOW());
-
             -- Rule 2: [보험시기](12) check
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> v_target_ym;
-            
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_LTR_RULE2', v_row_count, NOW());
 
             -- Rule 3: 중복 증권번호 처리
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
             CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_08 FROM T_TEMP_RPA_KBG_PROCESSED GROUP BY COLUMN_08 HAVING SUM(COLUMN_27='취소') > 0 AND SUM(COLUMN_27='정상') > 0;
             UPDATE T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_08 = d.COLUMN_08 SET t.COLUMN_27 = '취소';
-            
-            -- MySQL Delete Limitation Fix: Use intermediate temp table
-            DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
-            CREATE TEMPORARY TABLE tmp_del_kbg_ltr SELECT COLUMN_08, MIN(SYS_ID) as mid FROM T_TEMP_RPA_KBG_PROCESSED GROUP BY COLUMN_08;
-            DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_del_kbg_ltr k ON t.COLUMN_08 = k.COLUMN_08 WHERE t.COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_dup_case) AND t.SYS_ID <> k.mid;
-            DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
+            DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN (SELECT COLUMN_08, MIN(SYS_ID) as mid FROM T_TEMP_RPA_KBG_PROCESSED GROUP BY COLUMN_08) as k ON t.COLUMN_08 = k.COLUMN_08 WHERE t.COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_dup_case) AND t.SYS_ID <> k.mid;
 
             DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
             CREATE TEMPORARY TABLE tmp_agg_data SELECT COLUMN_08, SUM(CAST(REPLACE(IFNULL(COLUMN_20,'0'),',','') AS DECIMAL(18,0))) as s20, SUM(CAST(REPLACE(IFNULL(COLUMN_22,'0'),',','') AS DECIMAL(18,0))) as s22, MIN(SYS_ID) as mid FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_10 = 'KB 금쪽같은 자녀보험' GROUP BY COLUMN_08 HAVING COUNT(*)>1;
             UPDATE T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_20 = CAST(a.s20 AS CHAR), t.COLUMN_22 = CAST(a.s22 AS CHAR);
             DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_08 = a.COLUMN_08 WHERE t.SYS_ID <> a.mid;
             
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_LTR_RULE3', v_row_count, NOW());
-            
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_19 = '0';
 
             -- Rule 4: 보험료 마이너스 -> 플러스
             UPDATE T_TEMP_RPA_KBG_PROCESSED SET COLUMN_20 = CAST(ABS(CAST(REPLACE(COLUMN_20,',','') AS DECIMAL(18,0))) AS CHAR) WHERE COLUMN_20 LIKE '-%';
             UPDATE T_TEMP_RPA_KBG_PROCESSED SET COLUMN_22 = CAST(ABS(CAST(REPLACE(COLUMN_22,',','') AS DECIMAL(18,0))) AS CHAR) WHERE COLUMN_22 LIKE '-%';
-
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_LTR_LOGIC', v_row_count, NOW());
 
         -- [CAR Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -441,16 +395,8 @@ BEGIN
             -- Rule 2: [구분](21) = "환추징" 삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_21 = '환추징';
 
-            -- [DEBUG] Trace sample value of COLUMN_24 and v_target_ym
-            SELECT COLUMN_24 INTO @sample_col24 FROM T_TEMP_RPA_KBG_PROCESSED LIMIT 1;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, CONCAT('DEBUG_CAR_DATE: ', COALESCE(@sample_col24, 'NULL'), ' / Target: ', v_target_ym), 0, NOW());
-
             -- Rule 3: [보험시작일](24) check
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE LEFT(REPLACE(COLUMN_24, '-', ''), 6) < v_target_ym;
-
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_CAR_RULE3', v_row_count, NOW());
 
             -- Rule 4: 중복 증권번호 처리
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
@@ -463,15 +409,9 @@ BEGIN
             UPDATE T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_19 = CAST(a.s19 AS CHAR);
             DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_08 = a.COLUMN_08 WHERE t.SYS_ID <> a.mid;
 
-            -- MySQL Delete Limitation Fix: Use intermediate temp table
-            DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_car;
-            CREATE TEMPORARY TABLE tmp_del_kbg_car SELECT COLUMN_08 FROM T_TEMP_RPA_KBG_PROCESSED GROUP BY COLUMN_08 HAVING COUNT(*) > 1 AND SUM(COLUMN_21 <> '정상') = 0;
-            DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_del_kbg_car d ON t.COLUMN_08 = d.COLUMN_08 WHERE t.COLUMN_18 = '0';
-            DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_car;
-
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_CAR_LOGIC', v_row_count, NOW());
+            DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t
+            INNER JOIN (SELECT COLUMN_08 FROM T_TEMP_RPA_KBG_PROCESSED GROUP BY COLUMN_08 HAVING COUNT(*) > 1 AND SUM(COLUMN_21 <> '정상') = 0) as d ON t.COLUMN_08 = d.COLUMN_08
+            WHERE t.COLUMN_18 = '0';
 
         -- [GEN Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -487,24 +427,12 @@ BEGIN
             -- Rule 3: [건수](14) = "0" 삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_14 = '0' OR CAST(COLUMN_14 AS SIGNED) = 0;
 
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_GEN_RULE3', v_row_count, NOW());
-
             -- Rule 4: Combined filtering
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED 
             WHERE (COLUMN_14 = '1' OR CAST(COLUMN_14 AS SIGNED) = 1)
               AND COLUMN_17 NOT IN ('월납', '일시납')
               AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> v_target_ym;
-
-            -- [DEBUG] Capture counts
-            SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_GEN_LOGIC', v_row_count, NOW());
         END IF;
-
-        -- [DEBUG] Count before final insert
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
 
         -- 4. Build sql query insert processed table
         SET @sql_insert = CONCAT(
@@ -522,8 +450,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_KBG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
         DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_car;
 
     END IF;
 
