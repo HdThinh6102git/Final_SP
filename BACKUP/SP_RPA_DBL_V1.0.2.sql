@@ -14,14 +14,10 @@ BEGIN
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'DBL';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
     DECLARE v_cutoff_ym    VARCHAR(6)   DEFAULT '';
-    DECLARE v_log_initial_raw   INT DEFAULT 0;
-    DECLARE v_log_temp_initial  INT DEFAULT 0;
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        -- [DEBUG] Log exception
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBL_PROCESSED;
     END;
 
@@ -134,22 +130,6 @@ BEGIN
             'COLUMN_28, ', -- 지사
             'COLUMN_29, ', -- 생성일시
             'COLUMN_30'); -- 조회구분
-
-        -- [DEBUG] Initialize Debug Log Table
-        CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-            BATCH_ID VARCHAR(100),
-            COMPANY_CODE VARCHAR(10),
-            INSURANCE_TYPE VARCHAR(50),
-            CONTRACT_TYPE VARCHAR(20),
-            STEP_NAME VARCHAR(100),
-            ROW_COUNT INT,
-            LOG_TIME DATETIME
-        );
-
-        -- [DEBUG] Record INITIAL_RAW
-        SELECT COUNT(*) INTO v_log_initial_raw FROM T_RPA_LIFE_RAW 
-        WHERE BATCH_ID = IN_BATCH_ID AND COMPANY_CODE = 'DBL' AND UPPER(CONTRACT_TYPE) = UPPER(IN_CONTRACT_TYPE);
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
     END IF;
 
 
@@ -178,46 +158,27 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Record TEMP_INITIAL
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_DBL_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 3. Apply Transformation Logic
         
         IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
-            -- Rule 2: [상태]=실효,연체,완납,정상 & [UV종납년월]=값있음 이면
-            -- ① [종납년월]값을 [UV종납년월]로 수정
-            -- ② [납입횟수]값을 [UV 납입회차]로 수정
-            UPDATE T_TEMP_RPA_DBL_PROCESSED
+            -- [Rule 2] 종납년월 = UV종납년월, 납입횟수 = UV종납횟수
+            UPDATE T_TEMP_RPA_LIFE_PROCESSED
             SET COLUMN_07 = COLUMN_08, COLUMN_04 = COLUMN_09
             WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상') AND COLUMN_08 IS NOT NULL AND COLUMN_08 <> '';
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'EXT_AFTER_RULE2_UPDATES', (SELECT COUNT(*) FROM T_TEMP_RPA_DBL_PROCESSED), NOW());
-
-            -- Rule 3: [상태]=실효,연체,완납,정상이면
-            --  [소멸일자]값을 “0000-00-00”으로 수정
+            -- [Rule 3] [상태]=실효,연체,완납,정상이면 [소멸일자]값을 “0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_DBL_PROCESSED SET COLUMN_19 = '0000-00-00'
             WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상');
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'EXT_AFTER_RULE3_UPDATES', (SELECT COUNT(*) FROM T_TEMP_RPA_DBL_PROCESSED), NOW());
 
-            -- Rule 4: [납입주기]=“일시납”이면
-            --  [보험료]=“0”으로 수정
-            --  [납입횟수]=“1”로 수정
+            -- [Rule 4] [납입주기]=“일시납”이면 [보험료]=“0”으로 수정, [납입횟수]=“1”로 수정
             UPDATE T_TEMP_RPA_DBL_PROCESSED SET COLUMN_03 = '0', COLUMN_04 = '1'
             WHERE COLUMN_20 = '일시납';
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'EXT_AFTER_RULE4_UPDATES', (SELECT COUNT(*) FROM T_TEMP_RPA_DBL_PROCESSED), NOW());
 
-            -- Rule 5:  [상태]=실효 & [최종납입월]=실효 3년 경과면, [상태]값을 “시효＂로 변경
-            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
+            -- [Rule 5] [상태]=실효 & [최종납입일자]=실효 3년 경과면, [상태]값을 “시효"로 변경
             UPDATE T_TEMP_RPA_DBL_PROCESSED SET COLUMN_18 = '시효'
             WHERE COLUMN_18 = '실효'
               AND COLUMN_26 IS NOT NULL AND COLUMN_26 <> ''
               AND LEFT(REPLACE(REPLACE(COLUMN_26, '-', ''), '.', ''), 6) <= v_cutoff_ym;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'EXT_AFTER_RULE5_UPDATES', (SELECT COUNT(*) FROM T_TEMP_RPA_DBL_PROCESSED), NOW());
         END IF;
-
-        -- [DEBUG] Record final state
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_DBL_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
 
         -- 4. Build sql query insert processed table
         SET @sql_insert = CONCAT(
