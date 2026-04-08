@@ -14,37 +14,15 @@ BEGIN
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'DBG';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw    INT          DEFAULT 0;
-    DECLARE v_log_temp_initial   INT          DEFAULT 0;
-    DECLARE v_log_after_rule1    INT          DEFAULT 0;
-    DECLARE v_log_after_rule2    INT          DEFAULT 0;
-    DECLARE v_log_after_rule3    INT          DEFAULT 0;
-    DECLARE v_log_after_rule4    INT          DEFAULT 0;
-    DECLARE v_log_after_rule5    INT          DEFAULT 0;
-    DECLARE v_log_after_rule6    INT          DEFAULT 0;
-
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
     END;
 
     -- [SET logic]
     SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID VARCHAR(100),
-        COMPANY_CODE VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE VARCHAR(20),
-        STEP_NAME VARCHAR(100),
-        ROW_COUNT INT,
-        LOG_TIME DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping for DB Insurance (DBG)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -308,18 +286,6 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture Initial Raw and Temp counts
-        SET @sql_raw_count = CONCAT('SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table, ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') AND COMPANY_CODE = ''DBG''');
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-        
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_DBG_PROCESSED;
-        
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 3. Apply Transformation Logic
         
         -- [LTR Logic]
@@ -330,40 +296,23 @@ BEGIN
             -- ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_30 = '년납', COLUMN_31 = v_target_ym, COLUMN_32 = COLUMN_01;
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE1', v_log_after_rule1, NOW());
 
             -- Rule 2: [증권번호] 오름차순 정렬 후 [상태]≠"정상, 철회, 해지"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_26 NOT IN ('정상', '철회', '해지');
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE2', v_log_after_rule2, NOW());
 
             -- Rule 3: 중복 증권번호의 [상태]=각각"철회,정상"이면 [상태]="철회"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
             CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_15 FROM T_TEMP_RPA_DBG_PROCESSED GROUP BY COLUMN_15 HAVING SUM(COLUMN_26='철회')>0 AND SUM(COLUMN_26='정상')>0;
             UPDATE T_TEMP_RPA_DBG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_15 = d.COLUMN_15 SET t.COLUMN_26 = '철회';
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE COLUMN_15 IN (SELECT COLUMN_15 FROM tmp_dup_case) AND (COLUMN_18 LIKE '-%' OR CAST(REPLACE(COLUMN_18,',','') AS SIGNED) < 0);
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE3', v_log_after_rule3, NOW());
 
             -- Rule 4: [보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_18 = CAST(ABS(CAST(REPLACE(COLUMN_18,',','') AS SIGNED)) AS CHAR) WHERE COLUMN_18 LIKE '-%';
-            SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE4', v_log_after_rule4, NOW());
-
             -- Rule 5: [신규수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_DBG_PROCESSED SET COLUMN_20 = CAST(ABS(CAST(REPLACE(COLUMN_20,',','') AS SIGNED)) AS CHAR) WHERE COLUMN_20 LIKE '-%';
-            SELECT COUNT(*) INTO v_log_after_rule5 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE5', v_log_after_rule5, NOW());
 
             -- Rule 6: [책임개시일]≠해당월 면 데이터 행삭제
-            -- [DEBUG] Trace sample value of COLUMN_03 and Rule 6 evaluation
-            SELECT COLUMN_03 INTO @sample_col03 FROM T_TEMP_RPA_DBG_PROCESSED LIMIT 1;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, CONCAT('DEBUG_COL03 (Sample): ', COALESCE(@sample_col03, 'NULL')), 0, NOW());
-            
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED WHERE LEFT(REPLACE(REPLACE(COLUMN_03, '-', ''), '.', ''), 6) <> v_target_ym;
-            SELECT COUNT(*) INTO v_log_after_rule6 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE6', v_log_after_rule6, NOW());
 
         -- [CAR Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -405,10 +354,6 @@ BEGIN
               AND LEFT(REPLACE(REPLACE(COLUMN_02, '-', ''), '.', ''), 6) = v_target_ym;
         END IF;
 
-        -- [DEBUG] Count before final insert
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_DBG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
-
         -- 4. Build sql query insert processed table
         SET @sql_insert = CONCAT(
             'INSERT INTO ', v_proc_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
@@ -420,7 +365,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'DBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_PROCESSED_INSERTED', v_row_count, NOW());
 
         -- 5. Drop temporary table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBG_PROCESSED;
