@@ -20,15 +20,21 @@ BEGIN
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        -- [DEBUG] Log exception
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'SQL_EXCEPTION_TRIGGERED', 0, NOW());
-        DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_KBG_PROCESSED;
-        DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
-        DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
-        DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_car;
-    END;
+BEGIN
+    GET DIAGNOSTICS CONDITION 1
+        @v_err_no = MYSQL_ERRNO,
+        @v_err_msg = MESSAGE_TEXT;
+    INSERT INTO T_RPA_DEBUG_LOG VALUES (
+        IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
+        LEFT(CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg), 100),
+        0, NOW()
+    );
+    DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_KBG_PROCESSED;
+    DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
+    DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
+    DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
+    DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_car;
+END;
 
     -- [SET logic]
     SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
@@ -402,6 +408,13 @@ BEGIN
 
             /* 2. [증권번호] 오름차순 정렬 정렬 후 [보험시기] ≠해당월이면 삭제
             */
+            -- Sort Order ASC
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_KBG_PROCESSED 
+            SET SORT_ORDER_NO = (@seq := @seq + 1) 
+            ORDER BY COLUMN_08 ASC;
+
+            -- Delete 보험시기 != current month
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> v_target_ym;
             
             -- [DEBUG] Capture counts
@@ -423,15 +436,31 @@ BEGIN
             DROP TEMPORARY TABLE IF EXISTS tmp_del_kbg_ltr;
 
             DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-            CREATE TEMPORARY TABLE tmp_agg_data SELECT COLUMN_08, SUM(CAST(REPLACE(IFNULL(COLUMN_20,'0'),',','') AS DECIMAL(18,0))) as s20, SUM(CAST(REPLACE(IFNULL(COLUMN_22,'0'),',','') AS DECIMAL(18,0))) as s22, MIN(SYS_ID) as mid FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_10 = 'KB 금쪽같은 자녀보험' GROUP BY COLUMN_08 HAVING COUNT(*)>1;
-            UPDATE T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_20 = CAST(a.s20 AS CHAR), t.COLUMN_22 = CAST(a.s22 AS CHAR);
-            DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_08 = a.COLUMN_08 WHERE t.SYS_ID <> a.mid;
+            CREATE TEMPORARY TABLE tmp_agg_data 
+            SELECT 
+                COLUMN_08, 
+                SUM(CAST(REPLACE(IFNULL(COLUMN_20,'0'),',','') AS DECIMAL(18,0))) as s20, 
+                SUM(CAST(REPLACE(IFNULL(COLUMN_22,'0'),',','') AS DECIMAL(18,0))) as s22,
+                MAX(CASE WHEN COLUMN_19 != '0' THEN SYS_ID END) as mid
+            FROM T_TEMP_RPA_KBG_PROCESSED 
+            WHERE COLUMN_10 = 'KB 금쪽같은 자녀보험' 
+            GROUP BY COLUMN_08 
+            HAVING COUNT(*) > 1;
+
+            UPDATE T_TEMP_RPA_KBG_PROCESSED t 
+            INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid 
+            SET t.COLUMN_20 = CAST(a.s20 AS CHAR), 
+                t.COLUMN_22 = CAST(a.s22 AS CHAR);
+
+            DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t 
+            INNER JOIN tmp_agg_data a ON t.COLUMN_08 = a.COLUMN_08 
+            WHERE t.SYS_ID <> a.mid;
             
             -- [DEBUG] Capture counts
             SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_KBG_PROCESSED;
             INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'KBG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_LTR_RULE3', v_row_count, NOW());
             
-            DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_19 = '0';
+            DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_19 = '0' AND COLUMN_10 = 'KB 금쪽같은 자녀보험';
 
             /* 4. [보험료],[수정보험료]="마이너스금액"이면 "플러스"로 변경
             */
@@ -453,6 +482,13 @@ BEGIN
             UPDATE T_TEMP_RPA_KBG_PROCESSED SET COLUMN_26 = '년납', COLUMN_27 = v_target_ym, COLUMN_28 = COLUMN_10;
 
             /* 2. [증권번호] 오름차순 정렬 후 [구분]="환추징"이면 데이터 행삭제 */
+            -- Sort Order ASC
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_KBG_PROCESSED 
+            SET SORT_ORDER_NO = (@seq := @seq + 1) 
+            ORDER BY COLUMN_08 ASC;
+
+            -- Delete [구분] = '환추징'
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_21 = '환추징';
 
             -- [DEBUG] Trace sample value of COLUMN_24 and v_target_ym
@@ -477,7 +513,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS DECIMAL(18,0)) < 0);
 
             DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-            CREATE TEMPORARY TABLE tmp_agg_data SELECT COLUMN_08, SUM(CAST(REPLACE(IFNULL(COLUMN_19,'0'),',','') AS DECIMAL(18,0))) as s19, MIN(SYS_ID) as mid FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_12 = '공동' GROUP BY COLUMN_08 HAVING COUNT(*)>1;
+            CREATE TEMPORARY TABLE tmp_agg_data SELECT COLUMN_08, SUM(CAST(REPLACE(IFNULL(COLUMN_19,'0'),',','') AS DECIMAL(18,0))) as s19, MIN(SYS_ID) as mid FROM T_TEMP_RPA_KBG_PROCESSED WHERE COLUMN_12 LIKE '%공동%' GROUP BY COLUMN_08 HAVING COUNT(*)>1;
             UPDATE T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_19 = CAST(a.s19 AS CHAR);
             DELETE t FROM T_TEMP_RPA_KBG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_08 = a.COLUMN_08 WHERE t.SYS_ID <> a.mid;
 
