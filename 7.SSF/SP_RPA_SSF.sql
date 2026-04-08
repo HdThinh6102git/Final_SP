@@ -984,12 +984,10 @@ BEGIN
             */
 
             -- Rule 4①: 계약번호 오름차순 정렬
-            DROP TEMPORARY TABLE IF EXISTS tmp_sorted_ssf;
-            CREATE TEMPORARY TABLE tmp_sorted_ssf LIKE T_TEMP_RPA_SSF_PROCESSED;
-            INSERT INTO tmp_sorted_ssf SELECT * FROM T_TEMP_RPA_SSF_PROCESSED ORDER BY COLUMN_01 ASC;
-            DELETE FROM T_TEMP_RPA_SSF_PROCESSED;
-            INSERT INTO T_TEMP_RPA_SSF_PROCESSED SELECT * FROM tmp_sorted_ssf;
-            DROP TEMPORARY TABLE IF EXISTS tmp_sorted_ssf;
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_SSF_PROCESSED
+            SET SORT_ORDER_NO = (@seq := @seq + 1)
+            ORDER BY COLUMN_01 ASC;
 
             -- Rule 4②: 중복 계약번호 중 모두 "배서"면 전체 삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_all_bseo;
