@@ -370,7 +370,11 @@ BEGIN
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='취소')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '취소';
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
+
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED
+                WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case)
+                AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
+
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_AFTER_RULE3', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
                 
                 -- Rule 4: [계약구분]="공동인수"이면 중복증번의 [공동인수보험료]와 [수정보험료] 값을 각각 합하여 [공동인수보험료],[수정보험료]로 값수정해주고 [보험료]값도 수정한 [공동인수보험료]로 변경해줌
