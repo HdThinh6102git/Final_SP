@@ -319,18 +319,11 @@ BEGIN
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE1', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
 
                 -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]="추징,환급"이면 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-
-                -- 2-2: Reset SORT_ORDER_NO sequentially
+                -- 2-1: Reset SORT_ORDER_NO sequentially
                 SET @seq := 0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
 
-                -- 2-3: Delete deletions
+                -- 2-2: Delete deletions
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE2', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
 
@@ -346,24 +339,28 @@ BEGIN
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, CONCAT('DEBUG_LTR_DATE: ', COALESCE(@sample_col03, 'NULL'), ' / Target: ', v_target_ym), 0, NOW());
 
                 -- [Rule 4] [개시일]!=해당월 행 삭제
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE LEFT(COLUMN_03, 6) <> v_target_ym;
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE LEFT(REPLACE(COLUMN_03, '-', ''), 6) <> v_target_ym;
+
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE4', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
 
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
+                /* 1. 맨 마지막열 값 추가(3개)
+                ① 항목명I : 납기구분 / 항목값 : 년납
+                ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+                ③ 항목명III : 납입일 / 항목값 : 영수일과 동일한 값으로 반영
+                ※ 전체 행에 반영s */
+
+                UPDATE T_TEMP_RPA_HDG_PROCESSED
+                SET COLUMN_54 = '년납',
+                    COLUMN_55 = v_target_ym,
+                    COLUMN_56 = COLUMN_01;
 
                 -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-
-                -- 2-2: Reset SORT_ORDER_NO sequentially
+                -- 2-1: Reset SORT_ORDER_NO sequentially
                 SET @seq := 0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED SET SORT_ORDER_NO = (@seq := @seq + 1) ORDER BY COLUMN_12 ASC;
 
-                -- 2-3: Delete deletions
+                -- 2-2: Delete deletions
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_31 IN ('추징', '환급');
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'CAR_AFTER_RULE2', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
 
@@ -398,14 +395,6 @@ BEGIN
                     COLUMN_56 = COLUMN_01,
                     COLUMN_57 = '일시납';
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HDG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'GEN_AFTER_RULE1', (SELECT COUNT(*) FROM T_TEMP_RPA_HDG_PROCESSED), NOW());
-
-                -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
-                CREATE TEMPORARY TABLE tmp_sorted_hdg LIKE T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO tmp_sorted_hdg SELECT * FROM T_TEMP_RPA_HDG_PROCESSED ORDER BY COLUMN_12 ASC;
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED;
-                INSERT INTO T_TEMP_RPA_HDG_PROCESSED SELECT * FROM tmp_sorted_hdg;
-                DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hdg;
 
                 -- Rule 2: [계약번호] 오름차순 정렬 후 [배서구분]＝"추징,환급"이면 데이터 행삭제
                 SET @seq := 0;
