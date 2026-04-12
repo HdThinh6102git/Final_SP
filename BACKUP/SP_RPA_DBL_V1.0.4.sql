@@ -2,9 +2,9 @@
  * SP_RPA_DBL
  * Description : Process DB Life insurance data
  * Parameters  :
- *   IN IN_BATCH_ID       : Batch ID to process
- *   IN IN_INSURANCE_TYPE : Insurance type (LIF)
- *   IN IN_CONTRACT_TYPE  : Contract type (EXT only)
+ *   IN_BATCH_ID       : Batch ID to process
+ *   IN_INSURANCE_TYPE : Insurance type (LIF)
+ *   IN_CONTRACT_TYPE  : Contract type (EXT only)
  * Steps       :
  *   1. Hardcoded column mapping by contract type (EXT)
  *   2. Execute if column mapping is valid
@@ -22,49 +22,19 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_DBL`(
 )
 BEGIN
     -- [DECLARE variables]
-    DECLARE v_raw_cols        TEXT         DEFAULT '';
-    DECLARE v_proc_cols       TEXT         DEFAULT '';
-    DECLARE v_row_count       INT          DEFAULT 0;
-    DECLARE v_company_code    VARCHAR(10)  DEFAULT 'DBL';
-    DECLARE v_raw_table       VARCHAR(100) DEFAULT 'T_RPA_LIFE_RAW';
-    DECLARE v_processed_table VARCHAR(100) DEFAULT 'T_RPA_LIFE_PROCESSED';
-
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw  INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
-    DECLARE v_log_after_rule1  INT DEFAULT 0;
-    DECLARE v_log_after_rule2  INT DEFAULT 0;
-    DECLARE v_log_after_rule3  INT DEFAULT 0;
-    DECLARE v_log_after_rule4  INT DEFAULT 0;
-    DECLARE v_log_after_rule5  INT DEFAULT 0;
+    DECLARE v_raw_cols     TEXT        DEFAULT '';
+    DECLARE v_proc_cols    TEXT        DEFAULT '';
+    DECLARE v_row_count    INT         DEFAULT 0;
+    DECLARE v_company_code VARCHAR(10) DEFAULT 'DBL';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1
-            @v_err_no = MYSQL_ERRNO,
-            @v_err_msg = MESSAGE_TEXT;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (
-            IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-            CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg),
-            0, NOW()
-        );
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBL_PROCESSED;
     END;
 
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
-
     -- 1. Hardcoded Column Mapping
-    IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+    IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
         -- Mapping for EXT contracts (Columns 01-30)
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
@@ -162,11 +132,12 @@ BEGIN
         SET v_raw_cols = CONCAT(v_raw_cols,
             'COLUMN_28, ', -- 지사
             'COLUMN_29, ', -- 생성일시
-            'COLUMN_30');  -- 조회구분
+            'COLUMN_30'); -- 조회구분
         SET v_proc_cols = CONCAT(v_proc_cols,
             'COLUMN_28, ', -- 지사
             'COLUMN_29, ', -- 생성일시
-            'COLUMN_30');  -- 조회구분
+            'COLUMN_30'); -- 조회구분
+
     END IF;
 
     -- 2. Execute if column mapping is valid
@@ -180,7 +151,7 @@ BEGIN
         SET @sql_query = CONCAT(
             'INSERT INTO T_TEMP_RPA_DBL_PROCESSED (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
             'SELECT REPLACE(UUID(), ''-'', ''''), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), ''', v_company_code, ''', BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, EXCEL_ROW_INDEX, ', v_raw_cols, ' ',
-            'FROM ', v_raw_table, ' ',
+            'FROM T_RPA_LIFE_RAW ',
             'WHERE COMPANY_CODE = ''', v_company_code, ''' ',
             '  AND BATCH_ID = ''', IN_BATCH_ID, ''' ',
             '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
@@ -190,29 +161,13 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture initial counts
-        SET @sql_raw_count = CONCAT(
-            'SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table,
-            ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            'AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            'AND COMPANY_CODE = ''', v_company_code, ''''
-        );
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_DBL_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 2.3. Apply transformation rules (EXT)
+
+        -- [EXT Logic]
         IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             /* Rule 1: 2008년부터 2년씩 해당월도까지 다운로드 한 파일을 하나의 엑셀파일로 만들어 줌
                [PAUSE/SKIP] 수동 처리 필요 - SP에서 자동화 불가
             */
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_DBL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
 
             /* Rule 2: [상태]=실효,연체,완납,정상 & [UV종납년월]=값있음 이면
                ① [종납년월]값을 [UV종납년월]로 수정
@@ -223,10 +178,7 @@ BEGIN
                 COLUMN_04 = COLUMN_09
             WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상')
               AND COLUMN_08 IS NOT NULL
-              AND COLUMN_08 <> '';
-
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_DBL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
+              AND COLUMN_08 != '';
 
             /* Rule 3: [상태]=실효,연체,완납,정상이면
                [소멸일자]값을 "0000-00-00"으로 수정
@@ -234,9 +186,6 @@ BEGIN
             UPDATE T_TEMP_RPA_DBL_PROCESSED
             SET COLUMN_19 = '0000-00-00'
             WHERE COLUMN_18 IN ('실효', '연체', '완납', '정상');
-
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_DBL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
 
             /* Rule 4: [납입주기]="일시납"이면
                [보험료]="0"으로 수정
@@ -247,29 +196,20 @@ BEGIN
                 COLUMN_04 = '1'
             WHERE COLUMN_20 = '일시납';
 
-            SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_DBL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_4', v_log_after_rule4, NOW());
-
-            /* Rule 5: [상태]=실효 & [최종납입월]=실효 3년 경과면, [상태]값을 "시효"로 변경
-               3년 경과 기준 : 현재월 기준 38개월 경과
+            /* Rule 5: [상태]=실효 & [최종납입월]=실효 3년 경과면, [상태]값을 "시효"로  변경
+            3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             */
             UPDATE T_TEMP_RPA_DBL_PROCESSED
             SET COLUMN_18 = '시효'
             WHERE COLUMN_18 = '실효'
-              AND COLUMN_26 IS NOT NULL
-              AND COLUMN_26 <> ''
-              AND PERIOD_DIFF(
-                    DATE_FORMAT(CURDATE(), '%Y%m'),
-                    LEFT(REPLACE(REPLACE(COLUMN_26, '-', ''), '.', ''), 6)
-                  ) >= 38;
-
-            SELECT COUNT(*) INTO v_log_after_rule5 FROM T_TEMP_RPA_DBL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_5', v_log_after_rule5, NOW());
+            AND COLUMN_26 IS NOT NULL
+            AND COLUMN_26 != ''
+            AND PERIOD_DIFF(DATE_FORMAT(CURDATE(), '%Y%m'), DATE_FORMAT(COLUMN_26, '%Y%m')) >= 38;
         END IF;
 
         -- 2.4. Insert transformed data into processed table
         SET @sql_insert = CONCAT(
-            'INSERT INTO ', v_processed_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
+            'INSERT INTO T_RPA_LIFE_PROCESSED (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
             'SELECT SYS_ID, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ' ',
             'FROM T_TEMP_RPA_DBL_PROCESSED ORDER BY SORT_ORDER_NO ASC;'
         );
@@ -278,7 +218,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_INSERT', v_row_count, NOW());
 
         -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBL_PROCESSED;
