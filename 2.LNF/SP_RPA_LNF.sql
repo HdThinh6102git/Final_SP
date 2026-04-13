@@ -401,7 +401,7 @@ BEGIN
                 FROM T_RPA_INSURANCE_EXTRA_GUIDE
                 WHERE SYS_FLAG = '1'
                   AND BATCH_ID = IN_BATCH_ID
-                  AND COMPANY_CODE = 'LNF'
+                  AND COMPANY_CODE = v_company_code
                   AND CONTRACT_TYPE = 'EXT'
                   AND BUSINESS_RULE_NO = '2'
                   AND ACTION = 'DEL'
