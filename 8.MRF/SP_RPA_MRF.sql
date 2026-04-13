@@ -897,9 +897,11 @@ BEGIN
 
             -- Rule 4: [청약일자],[보험개시일자],[보험종료일자]를 간단한날짜 서식으로 변경
             UPDATE IGNORE T_TEMP_RPA_MRF_PROCESSED
-            SET COLUMN_04 = DATE_FORMAT(STR_TO_DATE(COLUMN_04, '%c/%e/%Y'), '%Y-%m-%d'),
-                COLUMN_06 = DATE_FORMAT(STR_TO_DATE(COLUMN_06, '%c/%e/%Y'), '%Y-%m-%d'),
-                COLUMN_07 = DATE_FORMAT(STR_TO_DATE(COLUMN_07, '%c/%e/%Y'), '%Y-%m-%d');
+            SET 
+                -- Convert MM/DD/YYYY
+                COLUMN_04 = DATE_FORMAT(STR_TO_DATE(COLUMN_04, '%c/%e/%Y'), '%m/%d/%Y'),
+                COLUMN_06 = DATE_FORMAT(STR_TO_DATE(COLUMN_06, '%c/%e/%Y'), '%m/%d/%Y'),
+                COLUMN_07 = DATE_FORMAT(STR_TO_DATE(COLUMN_07, '%c/%e/%Y'), '%m/%d/%Y');
 
             SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_MRF_PROCESSED;
             INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_4', v_log_after_rule4, NOW());
