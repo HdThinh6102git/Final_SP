@@ -612,8 +612,21 @@ BEGIN
             SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_DBG_PROCESSED;
             INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
 
-            -- Rule 4: [납입방법]≠"월납,일시납"이면 원수사 원부확인하여 [보험료] 값수정 및 [납입방법]="일시납"으로 값수정
-            -- [PAUSE/SKIP] 원부확인 수동 처리 필요
+            /* Rule 4: [납입방법]≠"월납,일시납"이면 원수사 원부확인하여 [보험료] 값수정 및 [납입방법]="일시납"으로 값수정 */
+            UPDATE T_TEMP_RPA_DBG_PROCESSED a
+            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
+            ON
+                a.COLUMN_15 = b.SEARCH_DATA
+                AND b.SYS_FLAG = '1'
+                AND b.BATCH_ID = IN_BATCH_ID
+                AND b.COMPANY_CODE = v_company_code
+                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
+                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
+                AND b.BUSINESS_RULE_NO = 4
+                AND b.COLUMN_NAME = '보험료'
+                AND b.ACTION = 'UPD'
+            SET a.COLUMN_18 = b.AFTER_COLUMN_DATA,
+                a.COLUMN_22 = '일시납';
 
         END IF;
 
