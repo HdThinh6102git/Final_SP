@@ -1,20 +1,3 @@
-/*
- * SP_RPA_SSF
- * Description : Process Samsung Fire insurance data
- * Parameters  :
- *   IN_BATCH_ID       : Batch ID to process
- *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
- *   IN_CONTRACT_TYPE  : Contract type (NEW only)
- * Steps       :
- *   1. Hardcoded column mapping by insurance type (LTR / CAR / GEN)
- *   2. Execute if column mapping is valid
- *      2.1. Create temp table
- *      2.2. Insert raw data into temp table
- *      2.3. Apply transformation rules (LTR / CAR / GEN)
- *      2.4. Insert transformed data into processed table
- *      2.5. Drop temp table
- */
-
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_SSF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
@@ -880,19 +863,8 @@ BEGIN
 
             /* Rule 4: 상품명 원수사 원부확인하여 값수정
                (장기>계약상세조회>"특성조회항목" → 상품명 확인)
+               [PAUSE/SKIP] 수동 처리 필요 - SP에서 자동화 불가
             */
-            UPDATE T_TEMP_RPA_SSF_PROCESSED a
-            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-            ON
-                a.COLUMN_02 = b.BEFORE_COLUMN_DATA
-                AND b.SYS_FLAG = '1'
-                AND b.BATCH_ID = IN_BATCH_ID
-                AND b.COMPANY_CODE = v_company_code
-                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                AND b.BUSINESS_RULE_NO = 4
-                AND b.ACTION = 'UPD'
-            SET a.COLUMN_02 = b.AFTER_COLUMN_DATA;
 
             /* Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
                → 장기>계약상세조회>"납입정보의 전체 회 / 12"계산한 값

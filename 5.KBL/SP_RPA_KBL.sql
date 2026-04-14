@@ -366,7 +366,7 @@ BEGIN
                 AND b.BUSINESS_RULE_NO = 1
                 AND b.COLUMN_NAME = '납입기간'
                 AND b.ACTION = 'UPD'
-            SET a.COLUMN_25 = b.COLUMN_DATA;
+            SET a.COLUMN_25 = b.AFTER_COLUMN_DATA;
 
             SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_KBL_PROCESSED;
             INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
