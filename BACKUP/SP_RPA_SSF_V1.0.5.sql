@@ -880,37 +880,13 @@ BEGIN
 
             /* Rule 4: 상품명 원수사 원부확인하여 값수정
                (장기>계약상세조회>"특성조회항목" → 상품명 확인)
+               [PAUSE/SKIP] 수동 처리 필요 - SP에서 자동화 불가
             */
-            UPDATE T_TEMP_RPA_SSF_PROCESSED a
-            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-            ON
-                a.COLUMN_02 = b.BEFORE_COLUMN_DATA
-                AND b.SYS_FLAG = '1'
-                AND b.BATCH_ID = IN_BATCH_ID
-                AND b.COMPANY_CODE = v_company_code
-                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                AND b.BUSINESS_RULE_NO = 4
-                AND b.COLUMN_NAME = '상품명'
-                AND b.ACTION = 'UPD'
-            SET a.COLUMN_02 = b.AFTER_COLUMN_DATA;
 
             /* Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
                → 장기>계약상세조회>"납입정보의 전체 회 / 12"계산한 값
+               [PAUSE/SKIP] 수동 처리 필요 - SP에서 자동화 불가
             */
-            UPDATE T_TEMP_RPA_SSF_PROCESSED a
-            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-            ON
-                a.COLUMN_01 = b.SEARCH_DATA
-                AND b.SYS_FLAG = '1'
-                AND b.BATCH_ID = IN_BATCH_ID
-                AND b.COMPANY_CODE = v_company_code
-                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                AND b.BUSINESS_RULE_NO = 5
-                AND b.COLUMN_NAME = '납입기간'
-                AND b.ACTION = 'UPD'
-            SET a.COLUMN_31 = b.AFTER_COLUMN_DATA;
 
         -- [CAR Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN

@@ -472,20 +472,7 @@ BEGIN
                 
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HKF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE3', (SELECT COUNT(*) FROM T_TEMP_RPA_HKF_PROCESSED), NOW());
 
-                /* Rule 4: [납기]="세납"인 경우 → T_RPA_INSURANCE_EXTRA_GUIDE 참조하여 업데이트 */
-                UPDATE T_TEMP_RPA_HKF_PROCESSED a
-                INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                ON
-                    a.COLUMN_04 = b.SEARCH_DATA
-                    AND b.SYS_FLAG = '1'
-                    AND b.BATCH_ID = IN_BATCH_ID
-                    AND b.COMPANY_CODE = v_company_code
-                    AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                    AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                    AND b.BUSINESS_RULE_NO = 4
-                    AND b.COLUMN_NAME = '납기'
-                    AND b.ACTION = 'UPD'
-                SET a.COLUMN_23 = b.AFTER_COLUMN_DATA;
+                -- Rule 4: [납기]="세납"인 경우 → SKIP (수동처리)
                 
             -- [CAR Logic]
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
@@ -540,47 +527,6 @@ BEGIN
 
             -- [GEN Logic]
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-                /* Rule 1: 맨 마지막열 값 추가(6개) */
-                -- ① 항목명I : 납기구분 / 항목값 : 년납
-                UPDATE T_TEMP_RPA_HKF_PROCESSED
-                SET 
-                    COLUMN_21 = '년납';
-
-                -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                UPDATE T_TEMP_RPA_HKF_PROCESSED
-                SET
-                    COLUMN_22 = v_target_ym;
-
-                -- ③ 항목명III : 납입주기 / 항목값 : 일시납
-                UPDATE T_TEMP_RPA_HKF_PROCESSED
-                SET
-                    COLUMN_23 = '일시납';
-
-                -- ④ 항목명IV : 만기일자 / 항목값 : 증번별로 원부확인하여 데이터반영
-                UPDATE T_TEMP_RPA_HKF_PROCESSED a
-                INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                ON
-                    a.COLUMN_05 = b.SEARCH_DATA
-                    AND b.SYS_FLAG = '1'
-                    AND b.BATCH_ID = IN_BATCH_ID
-                    AND b.COMPANY_CODE = v_company_code
-                    AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                    AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                    AND b.BUSINESS_RULE_NO = 1
-                    AND b.COLUMN_NAME = '만기일자'
-                    AND b.ACTION = 'ADD'
-                SET a.COLUMN_24 = b.AFTER_COLUMN_DATA;
-
-                -- ⑤ 항목명V : 납기 / 항목값 : 0
-                UPDATE T_TEMP_RPA_HKF_PROCESSED
-                SET
-                    COLUMN_25 = '0';
-
-                -- ⑥ 항목명VI : 보험사성적 / 항목값 : 0
-                UPDATE T_TEMP_RPA_HKF_PROCESSED
-                SET
-                    COLUMN_26 = '0';
-
                 -- Rule 2①: 맨아래 계 부분 데이터 행2개 삭제
                 -- ① 맨아래 계 부분의 데이터 행2개 삭제
                 DELETE FROM T_TEMP_RPA_HKF_PROCESSED
