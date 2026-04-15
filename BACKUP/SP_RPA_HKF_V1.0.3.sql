@@ -472,20 +472,7 @@ BEGIN
                 
                 INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HKF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'LTR_AFTER_RULE3', (SELECT COUNT(*) FROM T_TEMP_RPA_HKF_PROCESSED), NOW());
 
-                /* Rule 4: [납기]="세납"인 경우 → T_RPA_INSURANCE_EXTRA_GUIDE 참조하여 업데이트 */
-                UPDATE T_TEMP_RPA_HKF_PROCESSED a
-                INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                ON
-                    a.COLUMN_04 = b.SEARCH_DATA
-                    AND b.SYS_FLAG = '1'
-                    AND b.BATCH_ID = IN_BATCH_ID
-                    AND b.COMPANY_CODE = v_company_code
-                    AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                    AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                    AND b.BUSINESS_RULE_NO = 4
-                    AND b.COLUMN_NAME = '납기'
-                    AND b.ACTION = 'UPD'
-                SET a.COLUMN_23 = b.AFTER_COLUMN_DATA;
+                -- Rule 4: [납기]="세납"인 경우 → SKIP (수동처리)
                 
             -- [CAR Logic]
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
