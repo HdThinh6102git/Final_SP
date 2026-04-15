@@ -943,20 +943,8 @@ BEGIN
             SET a.COLUMN_03 = b.AFTER_COLUMN_DATA,
                 a.COLUMN_04 = '일시납';
 
-            /* Rule 4: [보험기간 시작일]을 원수사 원부확인하여 값입력 */
-            UPDATE T_TEMP_RPA_MRF_PROCESSED a
-            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-            ON
-                a.COLUMN_02 = b.SEARCH_DATA
-                AND b.SYS_FLAG = '1'
-                AND b.BATCH_ID = IN_BATCH_ID
-                AND b.COMPANY_CODE = v_company_code
-                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                AND b.BUSINESS_RULE_NO = 4
-                AND b.COLUMN_NAME = '보험기간 시작일'
-                AND b.ACTION = 'ADD'
-            SET a.COLUMN_40 = b.AFTER_COLUMN_DATA;
+            -- Rule 4: [보험기간 시작일]을 원수사 원부확인하여 값입력
+            -- [PAUSE/SKIP] 보험기간 시작일 원부확인 수동 처리 필요
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
             -- Rule 1: [계약상태명]=“정상,해지,해지불능”이면 [소멸실효일자]를 “0000-00-00”으로 값수정
