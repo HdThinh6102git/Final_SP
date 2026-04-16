@@ -970,8 +970,16 @@ BEGIN
             -- Rule 2: [계약상세상태명]=“모든 완납, 모든 납입면제 제외” 후 [계약상태명]="정상"건만 추출하여 [최종납입년월] 연체건은 [계약상태명]값을 "연체"로 값수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_53 = '연체'
-            WHERE COLUMN_56 NOT LIKE '%완납%'
-              AND COLUMN_56 NOT LIKE '%납입면제%'
+            WHERE COLUMN_56 NOT IN (
+                    '납입면제',
+                    '납입면제(완납)',
+                    '납입면제(일부실효)',
+                    '납입면제(정상)',
+                    '완납',
+                    '완납후(완납)',
+                    '완납후(일부실효)',
+                    '완납후(정상)'
+                )
               AND COLUMN_53 = '정상'
               AND COLUMN_08 < DATE_FORMAT(CURDATE(), '%Y%m');
 
