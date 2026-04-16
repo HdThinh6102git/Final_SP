@@ -31,36 +31,16 @@ BEGIN
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'LNF';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
     DECLARE v_cutoff_ym    VARCHAR(6)   DEFAULT '';
-    
-    -- [DECLARE debug variables]
-    DECLARE v_log_before       INT          DEFAULT 0;
-    DECLARE v_log_after        INT          DEFAULT 0;
-    DECLARE v_log_extra_count  INT          DEFAULT 0;
 
-    DECLARE v_msg TEXT;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1 v_msg = MESSAGE_TEXT;
-        INSERT IGNORE INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, CONCAT('EXCEPTION: ', COALESCE(v_msg, 'Unknown error')), 0, NOW());
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_LNF_PROCESSED;
     END;
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
 
     -- [SET logic]
     SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
     SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 38 MONTH), '%Y%m');
 
-    -- 1. Hardcoded Column Mapping for LINA Life (LNF)
     -- 1. Hardcoded Column Mapping for LINA Life (LNF)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         -- Mapping for NEW contracts (Columns 01-29 + Target-only 30, 31)
@@ -350,12 +330,7 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        SELECT COUNT(*) INTO v_log_after FROM T_TEMP_RPA_LNF_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INSERT_TEMP_DONE', v_log_after, NOW());
-
         -- 2.3. Apply transformation rules (NEW / EXT)
-
-        -- [NEW Logic]
         IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: 맨 마지막열 값 추가(2개)
                ① 항목명I : 납기구분 / 항목값 : 년납
@@ -366,35 +341,15 @@ BEGIN
             SET COLUMN_30 = '년납',
                 COLUMN_31 = DATE_FORMAT(CURDATE(), '%Y%m');
 
-        -- [EXT Logic]
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             /* Rule 1: [계약상태]="실효,시효,유지,청약"이면 [소멸일자]에 "0000-00-00"으로 수정 */
-            SELECT COUNT(*) INTO v_log_before FROM T_TEMP_RPA_LNF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE1_START', v_log_before, NOW());
-            
-            UPDATE T_TEMP_RPA_LNF_PROCESSED SET COLUMN_32 = '0000-00-00' WHERE COLUMN_29 IN ('실효', '시효', '유지', '청약');
-            
-            SELECT COUNT(*) INTO v_log_after FROM T_TEMP_RPA_LNF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE1_DONE', v_log_after, NOW());
+            UPDATE T_TEMP_RPA_LNF_PROCESSED
+            SET COLUMN_32 = '0000-00-00'
+            WHERE COLUMN_29 IN ('실효', '시효', '유지', '청약');
 
             /* Rule 2: [유지횟수]="0"이면, 제휴사 원부 조회하여 값 확인 후 수정(심사.계약>계약사항관리>"보험료입금조회" -> 납입회차(첫번째 행))
                -> 원부확인시 "영업제한 대상" 팝업뜨는 계약이면 데이터 행삭제
             */
-            -- [DEBUG] Count extra guide records
-            SELECT COUNT(*) INTO v_log_extra_count
-            FROM T_RPA_INSURANCE_EXTRA_GUIDE
-            WHERE SYS_FLAG = '1'
-              AND BATCH_ID = IN_BATCH_ID
-              AND COMPANY_CODE = 'LNF'
-              AND CONTRACT_TYPE = 'EXT'
-              AND BUSINESS_RULE_NO = '2'
-              AND ACTION = 'DEL';
-
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE2_EXTRA_GUIDE_COUNT', v_log_extra_count, NOW());
-            
-            SELECT COUNT(*) INTO v_log_before FROM T_TEMP_RPA_LNF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE2_BEFORE_DELETE', v_log_before, NOW());
-
             DELETE FROM T_TEMP_RPA_LNF_PROCESSED
             WHERE COLUMN_14 IN (
                 SELECT SEARCH_DATA
@@ -406,27 +361,17 @@ BEGIN
                   AND BUSINESS_RULE_NO = '2'
                   AND ACTION = 'DEL'
             );
-            
-            SELECT COUNT(*) INTO v_log_after FROM T_TEMP_RPA_LNF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE2_AFTER_DELETE', v_log_after, NOW());
 
             /* Rule 3: [계약상태]=“실효” & [유지년월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
                3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             */
-            SELECT COUNT(*) INTO v_log_before FROM T_TEMP_RPA_LNF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE3_START', v_log_before, NOW());
-
-            UPDATE T_TEMP_RPA_LNF_PROCESSED SET COLUMN_29 = '시효'
+            UPDATE T_TEMP_RPA_LNF_PROCESSED
+            SET COLUMN_29 = '시효'
             WHERE COLUMN_29 = '실효'
-              AND COLUMN_39 IS NOT NULL AND COLUMN_39 <> '' AND REPLACE(COLUMN_39, '-', '') <= v_cutoff_ym;
-            
-            SELECT COUNT(*) INTO v_log_after FROM T_TEMP_RPA_LNF_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'RULE3_DONE', v_log_after, NOW());
+              AND COLUMN_39 IS NOT NULL
+              AND COLUMN_39 <> ''
+              AND REPLACE(COLUMN_39, '-', '') <= v_cutoff_ym;
         END IF;
-
-        -- [DEBUG] Count before final insert
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_LNF_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LNF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
 
         -- 2.4. Insert transformed data into processed table
         SET @sql_insert = CONCAT(
