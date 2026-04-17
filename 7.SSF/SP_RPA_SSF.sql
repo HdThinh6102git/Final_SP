@@ -29,24 +29,9 @@ BEGIN
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
 
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw  INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
-    DECLARE v_log_after_rule2  INT DEFAULT 0;
-    DECLARE v_log_after_rule3  INT DEFAULT 0;
-    DECLARE v_log_after_rule4  INT DEFAULT 0;
-
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1
-            @v_err_no = MYSQL_ERRNO,
-            @v_err_msg = MESSAGE_TEXT;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (
-            IN_BATCH_ID, 'SSF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-            CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg),
-            0, NOW()
-        );
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_SSF_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_sorted_ssf;
         DROP TEMPORARY TABLE IF EXISTS tmp_tae_a;
@@ -56,17 +41,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_all_bseo;
         DROP TEMPORARY TABLE IF EXISTS tmp_mix_bseo;
     END;
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -791,20 +765,6 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture initial counts
-        SET @sql_raw_count = CONCAT(
-            'SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table,
-            ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') AND COMPANY_CODE = ''SSF'''
-        );
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_SSF_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'SSF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'SSF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 2.3. Apply transformation rules (LTR / CAR / GEN)
 
         -- [LTR Logic]
@@ -1045,10 +1005,6 @@ BEGIN
             WHERE COLUMN_08 LIKE '-%';
 
         END IF;
-        
-        -- [DEBUG] Count before final insert
-        SELECT COUNT(*) INTO v_row_count FROM T_TEMP_RPA_SSF_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'SSF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'BEFORE_FINAL_INSERT', v_row_count, NOW());
 
         -- 2.4. Insert transformed data into processed table
         SET @sql_insert = CONCAT(
@@ -1061,7 +1017,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'SSF', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_INSERT', v_row_count, NOW());
 
         -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_SSF_PROCESSED;
