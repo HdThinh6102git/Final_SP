@@ -29,38 +29,11 @@ BEGIN
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
 
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw  INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
-    DECLARE v_log_after_rule1  INT DEFAULT 0;
-    DECLARE v_log_after_rule2  INT DEFAULT 0;
-    DECLARE v_log_after_rule3  INT DEFAULT 0;
-    DECLARE v_log_after_rule4  INT DEFAULT 0;
-
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1
-            @v_err_no = MYSQL_ERRNO,
-            @v_err_msg = MESSAGE_TEXT;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (
-            IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-            CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg),
-            0, NOW()
-        );
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HWG_PROCESSED;
     END;
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -446,22 +419,6 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture initial counts
-        SET @sql_raw_count = CONCAT(
-            'SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table,
-            ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            'AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            'AND COMPANY_CODE = ''HWG'''
-        );
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_HWG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 2.3. Apply transformation rules (LTR / CAR / GEN)
         IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -475,17 +432,11 @@ BEGIN
                 COLUMN_38 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_39 = COLUMN_12;
 
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
-
             -- Rule 2: [월납환산보험료]="마이너스금액" 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_18 IS NOT NULL
               AND REPLACE(COLUMN_18, ',', '') REGEXP '^-[0-9]+'
               AND CAST(REPLACE(COLUMN_18, ',', '') AS SIGNED) < 0;
-
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -501,24 +452,15 @@ BEGIN
                 COLUMN_34 = '0',
                 COLUMN_35 = '일시납';
 
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
-
             -- Rule 2: [발생구분]="추징, 환급"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_17 IN ('추징', '환급');
-
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
 
             -- Rule 3: [보험료]="마이너스 금액"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_19 IS NOT NULL
               AND REPLACE(COLUMN_19, ',', '') REGEXP '^-[0-9]+'
               AND CAST(REPLACE(COLUMN_19, ',', '') AS SIGNED) < 0;
-
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -532,32 +474,20 @@ BEGIN
                 COLUMN_26 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_27 = '0';
 
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
-
             -- Rule 2: [발생구분]="추징, 환급"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_20 IN ('추징', '환급');
-
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
 
             -- Rule 3: [발생구분]="해지" & [보험시기]≠"해당월"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_20 = '해지'
               AND LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
 
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
-
             -- Rule 4: [보험료]="마이너스 금액"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_22 IS NOT NULL
               AND REPLACE(COLUMN_22, ',', '') REGEXP '^-[0-9]+'
               AND CAST(REPLACE(COLUMN_22, ',', '') AS SIGNED) < 0;
-
-            SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_HWG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_4', v_log_after_rule4, NOW());
 
         END IF;
 
@@ -572,7 +502,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'HWG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_INSERT', v_row_count, NOW());
 
         -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HWG_PROCESSED;
