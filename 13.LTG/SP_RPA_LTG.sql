@@ -31,25 +31,9 @@ BEGIN
     DECLARE v_current_ym       VARCHAR(6)   DEFAULT '';
     DECLARE v_cutoff_ym        VARCHAR(6)   DEFAULT '';
 
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw  INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
-    DECLARE v_log_after_rule1  INT DEFAULT 0;
-    DECLARE v_log_after_rule2  INT DEFAULT 0;
-    DECLARE v_log_after_rule3  INT DEFAULT 0;
-    DECLARE v_log_after_rule4  INT DEFAULT 0;
-
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1
-            @v_err_no = MYSQL_ERRNO,
-            @v_err_msg = MESSAGE_TEXT;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (
-            IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-            CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg),
-            0, NOW()
-        );
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_LTG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_ltg_dup_case;
     END;
@@ -57,17 +41,6 @@ BEGIN
     -- [SET logic]
     SET v_current_ym = DATE_FORMAT(CURDATE(), '%Y%m');
     SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -1193,6 +1166,7 @@ BEGIN
         SET v_proc_cols = CONCAT(v_proc_cols,
             'COLUMN_109, ', -- 피보험자고객ID
             'COLUMN_110');  -- 납기구분
+
     ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
         SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
         SET v_processed_table = 'T_RPA_LONG_TERM_PROCESSED';
@@ -1315,7 +1289,6 @@ BEGIN
             'COLUMN_34'); -- 세부상태
         SET v_proc_cols = CONCAT(v_proc_cols,
             'COLUMN_34'); -- 세부상태
-
     END IF;
     
     -- 2. Execute if column mapping is valid
@@ -1341,22 +1314,6 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture initial counts
-        SET @sql_raw_count = CONCAT(
-            'SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table,
-            ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            'AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            'AND COMPANY_CODE = ''LTG'''
-        );
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_LTG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 2.3. Apply transformation rules (LTR / CAR / GEN)
         IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: Column1열 값 변경(1개)
@@ -1365,26 +1322,10 @@ BEGIN
             UPDATE T_TEMP_RPA_LTG_PROCESSED
                SET COLUMN_110 = '년납';
 
-            SELECT COUNT(*)
-              INTO v_log_after_rule1
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_1', v_log_after_rule1, NOW()
-            );
-
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
              WHERE COLUMN_23 != '신규/추징';
-
-            SELECT COUNT(*)
-              INTO v_log_after_rule2
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_2', v_log_after_rule2, NOW()
-            );
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1411,14 +1352,6 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
-
-            SELECT COUNT(*)
-              INTO v_log_after_rule3
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_3', v_log_after_rule3, NOW()
-            );
 
             /* Rule 4: 납입기간="100"면 원수사 원부확인하여 "년납"으로 값수정 */
             UPDATE T_TEMP_RPA_LTG_PROCESSED a
@@ -1442,26 +1375,10 @@ BEGIN
             UPDATE T_TEMP_RPA_LTG_PROCESSED
                SET COLUMN_110 = '년납';
 
-            SELECT COUNT(*)
-              INTO v_log_after_rule1
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_1', v_log_after_rule1, NOW()
-            );
-
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
              WHERE COLUMN_23 != '신규/추징';
-
-            SELECT COUNT(*)
-              INTO v_log_after_rule2
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_2', v_log_after_rule2, NOW()
-            );
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1489,13 +1406,6 @@ BEGIN
              WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
-            SELECT COUNT(*)
-              INTO v_log_after_rule3
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_3', v_log_after_rule3, NOW()
-            );
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: 맨 마지막열 값 추가(1개)
                항목명I : 납기구분 / 항목값 : 년납
@@ -1503,26 +1413,10 @@ BEGIN
             UPDATE T_TEMP_RPA_LTG_PROCESSED
                SET COLUMN_110 = '년납';
 
-            SELECT COUNT(*)
-              INTO v_log_after_rule1
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_1', v_log_after_rule1, NOW()
-            );
-
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
              WHERE COLUMN_23 != '신규/추징';
-
-            SELECT COUNT(*)
-              INTO v_log_after_rule2
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_2', v_log_after_rule2, NOW()
-            );
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1550,26 +1444,11 @@ BEGIN
              WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
-            SELECT COUNT(*)
-              INTO v_log_after_rule3
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_3', v_log_after_rule3, NOW()
-            );
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
              /* Rule 1: [상태]=“정상,불능”이면 [실적기준일(변경일자)]=“0000-00-00”으로 수정 */
             UPDATE T_TEMP_RPA_LTG_PROCESSED
                SET COLUMN_12 = '0000-00-00'
              WHERE COLUMN_11 IN ('정상', '불능');
-
-            SELECT COUNT(*)
-              INTO v_log_after_rule1
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_1', v_log_after_rule1, NOW()
-            );
 
             /* Rule 2: [상태]=“정상” & [세부상태항목]≠"납입면제,"완납"이면
                [납입년월] 연체건은 [상태]값을 "연체"로 수정
@@ -1581,14 +1460,6 @@ BEGIN
                AND COLUMN_34 NOT LIKE '%완납%'
                AND COLUMN_05 < v_current_ym;
 
-            SELECT COUNT(*)
-              INTO v_log_after_rule2
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_2', v_log_after_rule2, NOW()
-            );
-
             /* Rule 3: [상태]=“실효” & [납입년월]=“실효 3년 경과”면,
                [상태]값을 “시효”로 변경
                3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하 */
@@ -1596,14 +1467,6 @@ BEGIN
                SET COLUMN_11 = '시효'
              WHERE COLUMN_11 = '실효'
                AND COLUMN_05 <= v_cutoff_ym;
-
-            SELECT COUNT(*)
-              INTO v_log_after_rule3
-              FROM T_TEMP_RPA_LTG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (
-                IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-                'AFTER_RULE_3', v_log_after_rule3, NOW()
-            );
         END IF;
 
         -- 2.4. Insert transformed data into processed table
@@ -1617,7 +1480,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'LTG', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_INSERT', v_row_count, NOW());
 
         -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_LTG_PROCESSED;
