@@ -29,39 +29,11 @@ BEGIN
     DECLARE v_raw_table       VARCHAR(100) DEFAULT 'T_RPA_LIFE_RAW';
     DECLARE v_processed_table VARCHAR(100) DEFAULT 'T_RPA_LIFE_PROCESSED';
 
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw  INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
-    DECLARE v_log_after_rule1  INT DEFAULT 0;
-    DECLARE v_log_after_rule2  INT DEFAULT 0;
-    DECLARE v_log_after_rule3  INT DEFAULT 0;
-    DECLARE v_log_after_rule4  INT DEFAULT 0;
-    DECLARE v_log_after_rule5  INT DEFAULT 0;
-
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1
-            @v_err_no = MYSQL_ERRNO,
-            @v_err_msg = MESSAGE_TEXT;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (
-            IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-            CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg),
-            0, NOW()
-        );
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MTL_PROCESSED;
     END;
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -372,31 +344,12 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture initial counts
-        SET @sql_raw_count = CONCAT(
-            'SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table,
-            ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            'AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            'AND COMPANY_CODE = ''MTL'''
-        );
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_MTL_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 2.3. Apply transformation rules
         IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
             -- Rule 1: 색필터 : 분홍색, 주황색 행삭제
             DELETE FROM T_TEMP_RPA_MTL_PROCESSED
             WHERE COLUMN_05 = '계';
-
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
 
             -- Rule 2: 값 편집
             -- ① [상태]=청약입력중 이면 데이터 행삭제
@@ -408,9 +361,6 @@ BEGIN
             SET COLUMN_14 = '0'
             WHERE COLUMN_14 = '일시납';
 
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
-
             -- Rule 3: 맨 마지막열 값 추가(3개)
             -- ① 항목명I : 납기구분 / 항목값 : 년납
             -- ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
@@ -421,18 +371,12 @@ BEGIN
                 COLUMN_40 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_41 = COLUMN_09;
 
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
-
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
 
             -- Rule 1: [계약일자]=“2021.10월 이전” 계약은 증권번호 8자리로 변경(right 8)
             UPDATE T_TEMP_RPA_MTL_PROCESSED 
             SET COLUMN_01 = RIGHT(COLUMN_01, 8)
             WHERE REPLACE(REPLACE(LEFT(COLUMN_06, 7), '-', ''), '.', '') < '202110';
-
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
 
             -- Rule 2: [납입주기]=“일시납” 이면
             -- ① [보험료(KRW)]값을 “0”으로 수정
@@ -442,23 +386,14 @@ BEGIN
                 COLUMN_27 = '1'
             WHERE COLUMN_08 = '일시납';
 
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
-
             -- Rule 3: [만기일자]=“9999-02-29”이면 “9999-02-28”로 수정
             UPDATE T_TEMP_RPA_MTL_PROCESSED
             SET COLUMN_07 = '9999-02-28'
             WHERE COLUMN_07 = '9999-02-29';
 
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
-
             -- Rule 4: [증번]="마스킹"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_MTL_PROCESSED
             WHERE COLUMN_01 = '마스킹';
-
-            SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_4', v_log_after_rule4, NOW());
 
             -- Rule 5: [계약상세상태]=“실효” & [최종납입일자]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
             -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
@@ -468,9 +403,6 @@ BEGIN
               AND COLUMN_25 IS NOT NULL
               AND COLUMN_25 <> ''
               AND LEFT(REPLACE(REPLACE(COLUMN_25, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
-
-            SELECT COUNT(*) INTO v_log_after_rule5 FROM T_TEMP_RPA_MTL_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_5', v_log_after_rule5, NOW());
 
         END IF;
 
@@ -485,7 +417,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, 'MTL', IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_INSERT', v_row_count, NOW());
 
         -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MTL_PROCESSED;
