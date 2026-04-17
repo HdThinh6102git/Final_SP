@@ -29,41 +29,12 @@ BEGIN
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
 
-    -- [DECLARE debug variables]
-    DECLARE v_log_initial_raw  INT DEFAULT 0;
-    DECLARE v_log_temp_initial INT DEFAULT 0;
-    DECLARE v_log_after_rule1  INT DEFAULT 0;
-    DECLARE v_log_after_rule2  INT DEFAULT 0;
-    DECLARE v_log_after_rule3  INT DEFAULT 0;
-    DECLARE v_log_after_rule4  INT DEFAULT 0;
-    DECLARE v_log_after_rule5  INT DEFAULT 0;
-    DECLARE v_log_after_rule6  INT DEFAULT 0;
-
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        GET DIAGNOSTICS CONDITION 1
-            @v_err_no = MYSQL_ERRNO,
-            @v_err_msg = MESSAGE_TEXT;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (
-            IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
-            CONCAT('SQL_EXCEPTION: [', @v_err_no, '] ', @v_err_msg),
-            0, NOW()
-        );
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBG_PROCESSED;
         DROP TEMPORARY TABLE IF EXISTS tmp_dbg_dup_case;
     END;
-
-    -- [INIT Debug Log Table]
-    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
-        BATCH_ID       VARCHAR(100),
-        COMPANY_CODE   VARCHAR(10),
-        INSURANCE_TYPE VARCHAR(50),
-        CONTRACT_TYPE  VARCHAR(20),
-        STEP_NAME      VARCHAR(100),
-        ROW_COUNT      INT,
-        LOG_TIME       DATETIME
-    );
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -421,22 +392,6 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        -- [DEBUG] Capture initial counts
-        SET @sql_raw_count = CONCAT(
-            'SELECT COUNT(*) INTO @v_raw_count FROM ', v_raw_table,
-            ' WHERE BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            'AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            'AND COMPANY_CODE = ''', v_company_code, ''''
-        );
-        PREPARE stmt_raw FROM @sql_raw_count;
-        EXECUTE stmt_raw;
-        DEALLOCATE PREPARE stmt_raw;
-        SET v_log_initial_raw = @v_raw_count;
-
-        SELECT COUNT(*) INTO v_log_temp_initial FROM T_TEMP_RPA_DBG_PROCESSED;
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'INITIAL_RAW', v_log_initial_raw, NOW());
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'TEMP_INITIAL', v_log_temp_initial, NOW());
-
         -- 2.3. Apply transformation rules
         IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -450,9 +405,6 @@ BEGIN
                 COLUMN_31 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_32 = COLUMN_01;
 
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
-
             -- Rule 2: [증권번호] 오름차순 정렬 후 [상태]≠"정상, 철회, 해지"이면 데이터 행삭제
             SET @seq := 0;
             UPDATE T_TEMP_RPA_DBG_PROCESSED
@@ -461,9 +413,6 @@ BEGIN
 
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
             WHERE COLUMN_26 NOT IN ('정상', '철회', '해지');
-
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
 
             -- Rule 3: 중복 증권번호의 [상태]=각각"철회,정상"이면 [상태]="철회"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_dbg_dup_case;
@@ -482,31 +431,19 @@ BEGIN
             WHERE COLUMN_15 IN (SELECT COLUMN_15 FROM tmp_dbg_dup_case)
               AND REPLACE(IFNULL(COLUMN_18, '0'), ',', '') REGEXP '^-[0-9]+';
 
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
-
             -- Rule 4: [보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_DBG_PROCESSED
             SET COLUMN_18 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_18, '0'), ',', '') AS SIGNED)) AS CHAR)
             WHERE REPLACE(IFNULL(COLUMN_18, '0'), ',', '') REGEXP '^-[0-9]+';
-
-            SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_4', v_log_after_rule4, NOW());
 
             -- Rule 5: [신규수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_DBG_PROCESSED
             SET COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS SIGNED)) AS CHAR)
             WHERE REPLACE(IFNULL(COLUMN_20, '0'), ',', '') REGEXP '^-[0-9]+';
 
-            SELECT COUNT(*) INTO v_log_after_rule5 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_5', v_log_after_rule5, NOW());
-
             -- Rule 6: [책임개시일]≠해당월 면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
             WHERE LEFT(REPLACE(REPLACE(COLUMN_03, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
-
-            SELECT COUNT(*) INTO v_log_after_rule6 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_6', v_log_after_rule6, NOW());
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -518,15 +455,9 @@ BEGIN
             SET COLUMN_30 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_31 = COLUMN_01;
 
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
-
             -- Rule 2: [영수일]="빈값"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
             WHERE COLUMN_01 IS NULL OR TRIM(COLUMN_01) = '';
-
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
 
             -- Rule 3: [증권번호] 오름차순 정렬 후 [상태]＝"계속,추징,추징/이체"이면 데이터 행삭제
             SET @seq := 0;
@@ -536,9 +467,6 @@ BEGIN
 
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
             WHERE COLUMN_26 IN ('계속', '추징', '추징/이체');
-
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
 
             -- Rule 4: 중복 증권번호의 [상태]=각각"취소,정상"이면 [상태]="취소"로 값수정 및 [보험료]="마이너스금액"이면 데이터 행삭제
             -- Rule 5: 중복 증권번호의 [상태]=모두"정상"이면 변경안함
@@ -557,9 +485,6 @@ BEGIN
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
             WHERE COLUMN_15 IN (SELECT COLUMN_15 FROM tmp_dbg_dup_case)
               AND REPLACE(IFNULL(COLUMN_18, '0'), ',', '') REGEXP '^-[0-9]+';
-
-            SELECT COUNT(*) INTO v_log_after_rule4 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_4', v_log_after_rule4, NOW());
 
             /* Rule 6: [납입방법]≠"월납,일시납"이면 원수사 원부확인하여 [보험료] 값수정 및 [납입방법]="일시납"으로 값수정 */
             UPDATE T_TEMP_RPA_DBG_PROCESSED a
@@ -587,9 +512,6 @@ BEGIN
             SET COLUMN_30 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_31 = COLUMN_01;
 
-            SELECT COUNT(*) INTO v_log_after_rule1 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_1', v_log_after_rule1, NOW());
-
             -- Rule 2: [증권번호] 오름차순 정렬 후 [상태]＝"계속,추징"이면 데이터 행삭제
             SET @seq := 0;
             UPDATE T_TEMP_RPA_DBG_PROCESSED
@@ -599,18 +521,12 @@ BEGIN
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
             WHERE COLUMN_26 IN ('계속', '추징');
 
-            SELECT COUNT(*) INTO v_log_after_rule2 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_2', v_log_after_rule2, NOW());
-
             -- Rule 3: [영수일]="빈값" & [입력일]="당월"이면 [영수일]=[입력일]로 값수정
             UPDATE T_TEMP_RPA_DBG_PROCESSED
             SET COLUMN_01 = COLUMN_02,
                 COLUMN_31 = COLUMN_02
             WHERE (COLUMN_01 IS NULL OR TRIM(COLUMN_01) = '')
               AND LEFT(REPLACE(REPLACE(COLUMN_02, '-', ''), '.', ''), 6) = DATE_FORMAT(CURDATE(), '%Y%m');
-
-            SELECT COUNT(*) INTO v_log_after_rule3 FROM T_TEMP_RPA_DBG_PROCESSED;
-            INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'AFTER_RULE_3', v_log_after_rule3, NOW());
 
             /* Rule 4: [납입방법]≠"월납,일시납"이면 원수사 원부확인하여 [보험료] 값수정 및 [납입방법]="일시납"으로 값수정 */
             UPDATE T_TEMP_RPA_DBG_PROCESSED a
@@ -641,7 +557,6 @@ BEGIN
         DEALLOCATE PREPARE stmt_insert;
 
         SET v_row_count = ROW_COUNT();
-        INSERT INTO T_RPA_DEBUG_LOG VALUES (IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE, 'FINAL_INSERT', v_row_count, NOW());
 
         -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBG_PROCESSED;
