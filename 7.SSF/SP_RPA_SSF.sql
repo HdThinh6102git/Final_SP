@@ -40,6 +40,14 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_blank_agg;
         DROP TEMPORARY TABLE IF EXISTS tmp_all_bseo;
         DROP TEMPORARY TABLE IF EXISTS tmp_mix_bseo;
+        DROP TEMPORARY TABLE IF EXISTS tmp_tae_keep;
+        DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
+        
+        DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
+        DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_sum;
+
+        DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
+        DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_dup;
     END;
 
     -- 1. Hardcoded Column Mapping
@@ -793,50 +801,137 @@ BEGIN
               AND DATE_FORMAT(COLUMN_24, '%Y%m') != DATE_FORMAT(CURDATE(), '%Y%m');
 
             /* Rule 3: 계약번호 중복 편집
-               ① 계약번호 오름차순 정렬
-               ② 중복 계약번호 중 [피보험자명]="태아"가 있는 경우
-                  "보험료(COLUMN_08), 월납환산수정P(COLUMN_11)" 합산 후 1건으로 수정
-                  - [피보험자명]="태아/계약자명" → "태아"로 유지
-                  - [피보험자명]="공백, 계약자명" → "계약자명"으로 유지
+            ① 계약번호 오름차순 정렬
+            ② 중복 계약번호 처리
+                - [피보험자명]='태아'가 있으면 비태아 행 합산 후 태아 행들에 각각 반영, 비태아 행 삭제
+                - [피보험자명]='태아'가 없고 공란 + 비공란이 있으면 공란 행 합산 후 비공란 행들에 각각 반영, 공란 행 삭제
             */
 
-            -- Rule 3①: 계약번호 오름차순 정렬
+            -- ① 계약번호 오름차순 정렬
             SET @seq := 0;
             UPDATE T_TEMP_RPA_SSF_PROCESSED
             SET SORT_ORDER_NO = (@seq := @seq + 1)
-            ORDER BY COLUMN_01 ASC;
+            ORDER BY COLUMN_01 ASC, EXCEL_ROW_INDEX ASC;
 
-            -- Rule 3②: 태아 case — SUM into 태아 row, DELETE all other rows
-            DROP TEMPORARY TABLE IF EXISTS tmp_tae_a;
-            CREATE TEMPORARY TABLE tmp_tae_a
+            -- Find all duplicated contracts
+            DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
+            CREATE TEMPORARY TABLE tmp_dup_contract
             SELECT COLUMN_01
             FROM T_TEMP_RPA_SSF_PROCESSED
-            WHERE COLUMN_05 = '태아';
+            GROUP BY COLUMN_01
+            HAVING COUNT(*) > 1;
 
-            DROP TEMPORARY TABLE IF EXISTS tmp_tae_agg;
-            CREATE TEMPORARY TABLE tmp_tae_agg
+            -- =====================================================
+            -- Case 1: Duplicate contracts that HAVE '태아'
+            -- Keep all rows with 피보험자명='태아'
+            -- Add total of non-태아 rows into each 태아 row
+            -- Delete all non-태아 rows
+            -- =====================================================
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
+            CREATE TEMPORARY TABLE tmp_tae_contract
+            SELECT COLUMN_01
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
+            GROUP BY COLUMN_01
+            HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) > 0;
+
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_non_sum;
+            CREATE TEMPORARY TABLE tmp_tae_non_sum
             SELECT
                 COLUMN_01,
-                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_08,
-                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_11
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS add_08,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS add_11
             FROM T_TEMP_RPA_SSF_PROCESSED
-            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_a)
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
+            AND TRIM(IFNULL(COLUMN_05, '')) <> '태아'
             GROUP BY COLUMN_01;
 
-            -- UPDATE SUM vào row 태아
-            UPDATE T_TEMP_RPA_SSF_PROCESSED t1
-            INNER JOIN tmp_tae_agg agg ON t1.COLUMN_01 = agg.COLUMN_01
-            SET t1.COLUMN_08 = agg.sum_08,
-                t1.COLUMN_11 = agg.sum_11
-            WHERE t1.COLUMN_05 = '태아';
+            UPDATE T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_tae_non_sum s
+                ON t.COLUMN_01 = s.COLUMN_01
+            SET
+                t.COLUMN_08 = CAST(
+                    CAST(REPLACE(IFNULL(t.COLUMN_08, '0'), ',', '') AS SIGNED)
+                    + CAST(IFNULL(s.add_08, '0') AS SIGNED)
+                    AS CHAR
+                ),
+                t.COLUMN_11 = CAST(
+                    CAST(REPLACE(IFNULL(t.COLUMN_11, '0'), ',', '') AS SIGNED)
+                    + CAST(IFNULL(s.add_11, '0') AS SIGNED)
+                    AS CHAR
+                )
+            WHERE TRIM(IFNULL(t.COLUMN_05, '')) = '태아'
+            AND t.COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract);
 
-            -- DELETE other row (계약자명 or 공백)
-            DELETE FROM T_TEMP_RPA_SSF_PROCESSED
-            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_a)
-              AND COLUMN_05 != '태아';
+            DELETE t
+            FROM T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_tae_contract c
+                ON t.COLUMN_01 = c.COLUMN_01
+            WHERE TRIM(IFNULL(t.COLUMN_05, '')) <> '태아';
 
-            DROP TEMPORARY TABLE IF EXISTS tmp_tae_a;
-            DROP TEMPORARY TABLE IF EXISTS tmp_tae_agg;
+            -- =====================================================
+            -- Case 2: Duplicate contracts that do NOT contain '태아'
+            -- and have both blank + non-blank 피보험자명
+            -- Keep all non-blank rows
+            -- Add total of blank rows into each non-blank row
+            -- Delete blank rows
+            -- =====================================================
+            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
+            CREATE TEMPORARY TABLE tmp_no_tae_mix
+            SELECT COLUMN_01
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
+            GROUP BY COLUMN_01
+            HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) = 0
+            AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '' THEN 1 ELSE 0 END) > 0
+            AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN 1 ELSE 0 END) > 0;
+
+            DROP TEMPORARY TABLE IF EXISTS tmp_blank_sum;
+            CREATE TEMPORARY TABLE tmp_blank_sum
+            SELECT
+                COLUMN_01,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS add_08,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS add_11
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
+            AND TRIM(IFNULL(COLUMN_05, '')) = ''
+            GROUP BY COLUMN_01;
+
+            UPDATE T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_blank_sum s
+                ON t.COLUMN_01 = s.COLUMN_01
+            SET
+                t.COLUMN_08 = CAST(
+                    CAST(REPLACE(IFNULL(t.COLUMN_08, '0'), ',', '') AS SIGNED)
+                    + CAST(IFNULL(s.add_08, '0') AS SIGNED)
+                    AS CHAR
+                ),
+                t.COLUMN_11 = CAST(
+                    CAST(REPLACE(IFNULL(t.COLUMN_11, '0'), ',', '') AS SIGNED)
+                    + CAST(IFNULL(s.add_11, '0') AS SIGNED)
+                    AS CHAR
+                )
+            WHERE t.COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
+            AND TRIM(IFNULL(t.COLUMN_05, '')) <> '';
+
+            DELETE t
+            FROM T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_no_tae_mix d
+                ON t.COLUMN_01 = d.COLUMN_01
+            WHERE TRIM(IFNULL(t.COLUMN_05, '')) = '';
+
+            -- Re-sequence after deletion
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_SSF_PROCESSED
+            SET SORT_ORDER_NO = (@seq := @seq + 1)
+            ORDER BY COLUMN_01 ASC, EXCEL_ROW_INDEX ASC;
+
+            -- Cleanup
+            DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_non_sum;
+            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
+            DROP TEMPORARY TABLE IF EXISTS tmp_blank_sum;
 
             /* Rule 4: 상품명 원수사 원부확인하여 값수정
                (장기>계약상세조회>"특성조회항목" → 상품명 확인)
