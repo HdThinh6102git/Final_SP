@@ -26,14 +26,20 @@ BEGIN
     DECLARE v_proc_cols       TEXT         DEFAULT '';
     DECLARE v_row_count       INT          DEFAULT 0;
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'MTL';
-    DECLARE v_raw_table       VARCHAR(100) DEFAULT 'T_RPA_LIFE_RAW';
-    DECLARE v_processed_table VARCHAR(100) DEFAULT 'T_RPA_LIFE_PROCESSED';
+    DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
+    DECLARE v_proc_table VARCHAR(100) DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MTL_PROCESSED;
     END;
+
+     -- Table Mapping by Insurance Type
+    IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
+        SET v_raw_table = 'T_RPA_LIFE_RAW';
+        SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
+    END IF;
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -326,7 +332,7 @@ BEGIN
 
         -- 2.1. Create temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MTL_PROCESSED;
-        SET @sql_create = CONCAT('CREATE TEMPORARY TABLE T_TEMP_RPA_MTL_PROCESSED LIKE ', v_processed_table);
+        SET @sql_create = CONCAT('CREATE TEMPORARY TABLE T_TEMP_RPA_MTL_PROCESSED LIKE ', v_proc_table);
         PREPARE stmt_create FROM @sql_create;
         EXECUTE stmt_create;
         DEALLOCATE PREPARE stmt_create;
@@ -408,7 +414,7 @@ BEGIN
 
         -- 2.4. Insert transformed data into processed table
         SET @sql_insert = CONCAT(
-            'INSERT INTO ', v_processed_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
+            'INSERT INTO ', v_proc_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
             'SELECT SYS_ID, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ' ',
             'FROM T_TEMP_RPA_MTL_PROCESSED ORDER BY SORT_ORDER_NO ASC;'
         );
