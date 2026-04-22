@@ -230,11 +230,11 @@ BEGIN
 
         SET @sql_query = CONCAT(
             'INSERT INTO T_TEMP_RPA_SSL_PROCESSED (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
-            'SELECT REPLACE(UUID(), ''-'', ''''), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, EXCEL_ROW_INDEX, ', v_raw_cols, ' ',
+            'SELECT REPLACE(UUID(), ''-'', ''''), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), ''SSL'', BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, EXCEL_ROW_INDEX, ', v_raw_cols, ' ',
             'FROM T_RPA_LIFE_RAW ',
-            'WHERE COMPANY_CODE = ''', v_company_code, ''' ',
+            'WHERE COMPANY_CODE = ''SSL'' ',
             '  AND BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            '  AND CONTRACT_TYPE = UPPER(''', IN_CONTRACT_TYPE, ''');'
+            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
         );
         
         PREPARE stmt FROM @sql_query;
@@ -252,14 +252,8 @@ BEGIN
         END IF;
 
         -- [EXT Logic]
-        IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
-            /*
-                1. 증권번호 편집
-                ① 증번 숫자형식으로 변경 후 글자수 체크(len함수)
-                → 글자수가 “14&10”이면 증번앞에 “000”을 붙여서 만들어 줌
-                → 글자수가 “12”이면 증번앞에 “0”을 붙여서 만들어 줌
-                → 글자수가 “13”이면 증번 그대로 사용
-            */
+        IF UPPER(IN_CONTRACT_TYPE) = 'EXT' OR UPPER(IN_CONTRACT_TYPE) = 'EXISTING' THEN
+            -- Rule 1: 계약번호 정규화 (Normalization)
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_10 = CASE
                 WHEN CHAR_LENGTH(REGEXP_REPLACE(COLUMN_10, '[^0-9]', '')) IN (10, 14)
@@ -269,26 +263,15 @@ BEGIN
                 ELSE REGEXP_REPLACE(COLUMN_10, '[^0-9]', '')
             END;
 
-            /*
-                2. 종납일자 “0000-00-00” 추출 후 
-                → [보험계약상태]=“반송/철회”면, [종납일자]에 [계약일자]로 수정
-            */
+            -- Rule 2: 종납일자 “0000-00-00” 추출 후 
+            --    → [보험계약상태]=“반송/철회”면, [종납일자]에 [계약일자]로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_24 = COLUMN_14
             WHERE COLUMN_24 = '0000-00-00'
               AND (COLUMN_22 LIKE '%반송%' OR COLUMN_22 LIKE '%철회%');
 
-            /*
-                3. 최종납입년월 편집
-                ① [최종납입년월] “빈셀” 추출 후 
-                → [보험계약상태]=“반송/철회”면, [최종납입년월]에 “계약년월＂로 수정
-                ② [최종납입년월]이 실효해당월인데 [보험계약상태]=“정상”인 경우
-                → [최종납입년월]에 [유지년월] 값으로 수정
-                * 실효해당월 계산 : 최종납입년월 = 마감월도 -2월
-                (예시, 마감월도 2026.01 / 최종납입년월 2025.11)
-                ③ [납입주기]=“6개월/12월납”이면, [최종납입년월]에 [유지년월] 값으로 수정
-            */
-            -- Rule 3.1: [최종납입년월] “빈셀” 추출 후 
+            -- Rule 3: 최종납입년월 편집
+            -- Rule 3.1: ① [최종납입년월] “빈셀” 추출 후 
             --    → [보험계약상태]=“반송/철회”면, [최종납입년월]에 “계약년월＂로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_15 = DATE_FORMAT(COLUMN_14, '%Y-%m')
