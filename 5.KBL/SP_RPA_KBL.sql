@@ -24,10 +24,10 @@ BEGIN
     -- [DECLARE variables]
     DECLARE v_raw_cols        TEXT         DEFAULT '';
     DECLARE v_proc_cols       TEXT         DEFAULT '';
-    DECLARE v_row_count       INT          DEFAULT 0;
-    DECLARE v_company_code    VARCHAR(10)  DEFAULT 'KBL';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_proc_table VARCHAR(100) DEFAULT '';
+    DECLARE v_row_count       INT          DEFAULT 0;
+    DECLARE v_company_code    VARCHAR(10)  DEFAULT 'KBL';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
