@@ -8,6 +8,8 @@ BEGIN
     DECLARE v_raw_cols     TEXT         DEFAULT '';
     DECLARE v_proc_cols    TEXT         DEFAULT '';
     DECLARE v_sql_query    TEXT         DEFAULT '';
+    DECLARE v_raw_table    VARCHAR(100) DEFAULT '';
+    DECLARE v_proc_table   VARCHAR(100) DEFAULT '';
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'SSL';
 
@@ -16,6 +18,12 @@ BEGIN
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_SSL_PROCESSED;
     END;
+
+    -- Table Mapping by Insurance Type
+    IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
+        SET v_raw_table = 'T_RPA_LIFE_RAW';
+        SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
+    END IF;
 
     -- 1. Hardcoded Column Mapping for Samsung Life (SSL)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -330,7 +338,7 @@ BEGIN
 
         -- 4. Build sql query insert processed table
         SET @sql_insert = CONCAT(
-            'INSERT INTO T_RPA_LIFE_PROCESSED (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
+            'INSERT INTO ', v_proc_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
             'SELECT SYS_ID, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ' ',
             'FROM T_TEMP_RPA_SSL_PROCESSED ORDER BY SORT_ORDER_NO ASC;'
         );
