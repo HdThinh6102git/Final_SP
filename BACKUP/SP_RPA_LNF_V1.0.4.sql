@@ -1,20 +1,3 @@
-/*
- * SP_RPA_LNF
- * Description : Process Lina Life insurance data
- * Parameters  :
- *   IN_BATCH_ID       : Batch ID to process
- *   IN_INSURANCE_TYPE : Insurance type (LIF)
- *   IN_CONTRACT_TYPE  : Contract type (NEW / EXT)
- * Steps       :
- *   1. Hardcoded column mapping by contract type (NEW / EXT)
- *   2. Execute if column mapping is valid
- *      2.1. Create temp table
- *      2.2. Insert raw data into temp table
- *      2.3. Apply transformation rules (NEW / EXT)
- *      2.4. Insert transformed data into processed table
- *      2.5. Drop temp table
- */
-
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_LNF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
@@ -323,7 +306,7 @@ BEGIN
             'FROM T_RPA_LIFE_RAW ',
             'WHERE COMPANY_CODE = ''', v_company_code, ''' ',
             '  AND BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            '  AND CONTRACT_TYPE = UPPER(''', IN_CONTRACT_TYPE, ''');'
+            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
         );
         
         PREPARE stmt FROM @sql_query;
