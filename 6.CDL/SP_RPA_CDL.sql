@@ -9,7 +9,7 @@ BEGIN
     DECLARE v_proc_cols    TEXT         DEFAULT '';
     DECLARE v_sql_query    TEXT         DEFAULT '';
     DECLARE v_raw_table    VARCHAR(100) DEFAULT '';
-    DECLARE v_proc_table   VARCHAR(100) DEFAULT 'T_RPA_LIFE_PROCESSED';
+    DECLARE v_proc_table   VARCHAR(100) DEFAULT '';
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'CDL';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
@@ -25,6 +25,12 @@ BEGIN
     SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
     -- Rule 6 cutoff: 38 months
     SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 38 MONTH), '%Y%m');
+
+    -- Table Mapping by Insurance Type
+    IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
+        SET v_raw_table = 'T_RPA_LIFE_RAW';
+        SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
+    END IF;
 
     -- 1. Hardcoded Column Mapping for Chubb Life (CDL)
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
