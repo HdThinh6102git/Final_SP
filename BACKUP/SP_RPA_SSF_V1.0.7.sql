@@ -1044,12 +1044,6 @@ BEGIN
             SET COLUMN_08 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR)
             WHERE COLUMN_08 LIKE '-%';
 
-            /* Rule 6 (추가요건): 보험시기 항목 < 해당월, 데이터 행삭제 필요(추가요건) */
-            DELETE FROM T_TEMP_RPA_SSF_PROCESSED
-            WHERE COLUMN_25 IS NOT NULL
-              AND TRIM(COLUMN_25) <> ''
-              AND DATE_FORMAT(COLUMN_25, '%Y%m') < DATE_FORMAT(CURDATE(), '%Y%m');
-    
         -- [GEN Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
