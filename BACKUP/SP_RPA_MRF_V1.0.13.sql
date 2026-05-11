@@ -705,10 +705,6 @@ BEGIN
             WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
               AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '') REGEXP '^-[0-9]+';
 
-            /* Rule 5: 청약일 ≠ 해당월, 데이터 행삭제 필요(추가요건)  */
-            DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE LEFT(REPLACE(IFNULL(COLUMN_32, ''), '-', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
-
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             UPDATE T_TEMP_RPA_MRF_PROCESSED
@@ -799,10 +795,6 @@ BEGIN
                 AND b.ACTION = 'ADD'
             SET a.COLUMN_40 = b.AFTER_COLUMN_DATA;
 
-            /* Rule 6: 영수항목=배서, 데이터 행삭제 되어야하나 처리 안됨(추가요건: 증복 계약번호가 아니더라도 영수항목 배서는 삭제) */
-            DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE COLUMN_07 = '배서';
-
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             UPDATE T_TEMP_RPA_MRF_PROCESSED
@@ -892,10 +884,6 @@ BEGIN
                 AND b.COLUMN_NAME = '보험기간 시작일'
                 AND b.ACTION = 'ADD'
             SET a.COLUMN_40 = b.AFTER_COLUMN_DATA;
-
-            /* Rule 5: 영수항목=배서, 데이터 행삭제 되어야하나 처리 안됨(추가요건: 증복 계약번호가 아니더라도 영수항목 배서는 삭제) */
-            DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE COLUMN_07 = '배서';
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
             -- Rule 1: [계약상태명]=“정상,해지,해지불능”이면 [소멸실효일자]를 “0000-00-00”으로 값수정
