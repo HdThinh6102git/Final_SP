@@ -396,7 +396,7 @@ BEGIN
             FROM T_TEMP_RPA_KBG_PROCESSED
             GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_27 = '취소' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_27 = '정상' THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_27 = '신규' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_KBG_PROCESSED t
             INNER JOIN tmp_kbg_dup_case d ON t.COLUMN_08 = d.COLUMN_08
