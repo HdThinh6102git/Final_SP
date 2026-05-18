@@ -1325,8 +1325,7 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NOT NULL 
-              AND TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 != '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1342,22 +1341,17 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_23 = '정상' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_23 IN ('취소/철회', '취소', '철회') THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_23 = '취소/철회' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_LTG_PROCESSED t
             INNER JOIN tmp_ltg_dup_case d
                     ON t.COLUMN_08 = d.COLUMN_08
                SET t.COLUMN_23 = '취소';
 
-            DELETE FROM T_TEMP_RPA_LTG_PROCESSED
-            WHERE 
-                COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
-                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            DELETE
+              FROM T_TEMP_RPA_LTG_PROCESSED
+             WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
+               AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
             /* Rule 4: 납입기간="100"면 원수사 원부확인하여 "년납"으로 값수정 */
             UPDATE T_TEMP_RPA_LTG_PROCESSED a
@@ -1384,8 +1378,7 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NOT NULL 
-              AND TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 != '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1401,22 +1394,17 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_23 = '정상' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_23 IN ('취소/철회', '취소', '철회') THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_23 = '취소/철회' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_LTG_PROCESSED t
             INNER JOIN tmp_ltg_dup_case d
                     ON t.COLUMN_08 = d.COLUMN_08
                SET t.COLUMN_23 = '취소';
 
-            DELETE FROM T_TEMP_RPA_LTG_PROCESSED
-            WHERE
-                COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
-                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            DELETE
+              FROM T_TEMP_RPA_LTG_PROCESSED
+             WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
+               AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: 맨 마지막열 값 추가(1개)
@@ -1428,8 +1416,7 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NOT NULL
-              AND TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 != '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1445,22 +1432,17 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_23 = '정상' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_23 IN ('취소/철회', '취소', '철회') THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_23 = '취소/철회' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_LTG_PROCESSED t
             INNER JOIN tmp_ltg_dup_case d
                     ON t.COLUMN_08 = d.COLUMN_08
                SET t.COLUMN_23 = '취소';
 
-            DELETE FROM T_TEMP_RPA_LTG_PROCESSED
-            WHERE 
-                COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
-                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            DELETE
+              FROM T_TEMP_RPA_LTG_PROCESSED
+             WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
+               AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
              /* Rule 1: [상태]=“정상,불능”이면 [실적기준일(변경일자)]=“0000-00-00”으로 수정 */
