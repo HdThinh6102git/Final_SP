@@ -444,26 +444,12 @@ BEGIN
 
                 -- Rule 2.4: [영수보험료],[수정보험료]="마이너스 금액"이면 "플러스 금액"으로 값수정
                 UPDATE T_TEMP_RPA_HKF_PROCESSED 
-                SET 
-                COLUMN_14 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_14,'0'), ',', '') AS SIGNED)) AS CHAR) 
-                WHERE 
-                    REPLACE(IFNULL(COLUMN_14, '0'), ',', '')
-                        REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                    AND CAST(
-                            REPLACE(IFNULL(COLUMN_14, '0'), ',', '')
-                            AS DECIMAL(15,2)
-                        ) < 0;
+                SET COLUMN_14 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_14,'0'), ',', '') AS SIGNED)) AS CHAR) 
+                WHERE REPLACE(COLUMN_14, ',', '') REGEXP '^-[0-9]+';
                 
                 UPDATE T_TEMP_RPA_HKF_PROCESSED 
-                SET 
-                COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22,'0'), ',', '') AS SIGNED)) AS CHAR) 
-                WHERE 
-                    REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
-                        REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                    AND CAST(
-                            REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
-                            AS DECIMAL(15,2)
-                        ) < 0;
+                SET COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22,'0'), ',', '') AS SIGNED)) AS CHAR) 
+                WHERE REPLACE(COLUMN_22, ',', '') REGEXP '^-[0-9]+';
 
                 /* 
                     Rule 3: [계약일자]≠"해당월"면 데이터 행삭제 
