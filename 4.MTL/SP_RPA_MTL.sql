@@ -28,12 +28,16 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'MTL';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_proc_table VARCHAR(100) DEFAULT '';
+    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MTL_PROCESSED;
     END;
+
+    -- [SET internal logic]
+    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
 
      -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -374,7 +378,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_MTL_PROCESSED
             SET COLUMN_39 = '년납',
-                COLUMN_40 = DATE_FORMAT(CURDATE(), '%Y%m'),
+                COLUMN_40 = v_target_ym,
                 COLUMN_41 = COLUMN_09;
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
