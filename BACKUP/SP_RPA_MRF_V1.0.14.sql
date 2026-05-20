@@ -28,7 +28,6 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'MRF';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
-    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -37,9 +36,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_mrf_dup_case;
         DROP TEMPORARY TABLE IF EXISTS tmp_mrf_del_case;
     END;
-
-    -- [SET internal logic]
-    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -675,7 +671,7 @@ BEGIN
             -- ② 항목명II : 납입월 / 항목값 : 해당월
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_38 = '년납',
-                COLUMN_39 = v_target_ym;
+                COLUMN_39 = DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 2: [증권번호] 오름차순 정렬 후 [영수]≠"신계약, 취소"면 데이터 행삭제
             SET @seq := 0;
@@ -688,8 +684,8 @@ BEGIN
 
             -- Rule 3: [일자]≠해당월 & [상품명]≠실손이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE LEFT(REPLACE(COLUMN_01, '-', ''), 6) <> v_target_ym
-              AND IFNULL(COLUMN_28, '') NOT LIKE '%실손%';
+            WHERE LEFT(REPLACE(COLUMN_01, '-', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m')
+              AND COLUMN_28 NOT LIKE '%실손%';
 
             -- Rule 4: 증권번호 중복 편집
             DROP TEMPORARY TABLE IF EXISTS tmp_mrf_dup_case;
@@ -706,24 +702,18 @@ BEGIN
 
             -- 중복 증권번호 중 Delete the row where [보험료] is a negative value.
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE 
-                COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
-                AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
+              AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '') REGEXP '^-[0-9]+';
 
             /* Rule 5: 청약일 ≠ 해당월, 데이터 행삭제 필요(추가요건)  */
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE LEFT(REPLACE(IFNULL(COLUMN_32, ''), '-', ''), 6) <> v_target_ym;
+            WHERE LEFT(REPLACE(IFNULL(COLUMN_32, ''), '-', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_38 = '년납',
-                COLUMN_39 = v_target_ym;
+                COLUMN_39 = DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 2.1: 계약번호 오름차순 정렬
             SET @seq := 0;
@@ -770,14 +760,8 @@ BEGIN
             SET t.COLUMN_07 = '취소';
 
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE 
-            COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
-            AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
+              AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '') REGEXP '^-[0-9]+';
 
             -- Rule 3: [보험료]="마이너스"이면 "플러스"값으로 수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED
@@ -823,7 +807,7 @@ BEGIN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_38 = '년납',
-                COLUMN_39 = v_target_ym;
+                COLUMN_39 = DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 2.1: 계약번호 오름차순 정렬
             SET @seq := 0;
@@ -870,24 +854,13 @@ BEGIN
             SET t.COLUMN_07 = '취소';
 
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE 
-            COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
-            AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            WHERE COLUMN_02 IN (SELECT COLUMN_02 FROM tmp_mrf_dup_case)
+              AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '') REGEXP '^-[0-9]+';
 
             -- Rule 2.5: 청약일≠해당월 & [보험료]="마이너스금액" 데이터 행삭제
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
-            WHERE LEFT(REPLACE(COLUMN_32, '-', ''), 6) <> v_target_ym
-                AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_03, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            WHERE LEFT(REPLACE(COLUMN_32, '-', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m')
+              AND REPLACE(IFNULL(COLUMN_03, '0'), ',', '') REGEXP '^-[0-9]+';
 
             /* Rule 3: [납입주기]≠월납,일시납이면 원수사 원부확인하여 [보험료] 값수정 및 [납입주기]="일시납"으로 값수정 */
             UPDATE T_TEMP_RPA_MRF_PROCESSED a
@@ -944,7 +917,7 @@ BEGIN
                     '완납후(정상)'
                 )
               AND COLUMN_53 = '정상'
-              AND COLUMN_08 < v_target_ym;
+              AND COLUMN_08 < DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 3: [계약상세상태명]=“중지”이면, [계약상태명]값을 "정상"으로 값수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED
