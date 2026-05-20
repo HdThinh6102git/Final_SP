@@ -447,6 +447,8 @@ BEGIN
               AND t.SORT_ORDER_NO <> a.keep_sort_order_no;
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
+            INNER JOIN tmp_kbg_agg_data a
+                    ON t.COLUMN_08 = a.COLUMN_08
             WHERE COLUMN_10 LIKE '%KB 금쪽같은 자녀보험%'
               AND (COLUMN_19 = '0' OR CAST(IFNULL(COLUMN_19, '0') AS SIGNED) = 0);
 
