@@ -28,7 +28,6 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'KBG';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
-    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -39,9 +38,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_kbg_agg_data;
         DROP TEMPORARY TABLE IF EXISTS tmp_kbg_dup_all_normal;
     END;
-
-    -- [SET internal logic]
-    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -380,7 +376,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_29 = '년납',
-                COLUMN_30 = v_target_ym,
+                COLUMN_30 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_31 = COLUMN_09;
 
             -- Rule 2: [증권번호] 오름차순 정렬 정렬 후 [보험시기] ≠해당월이면 삭제
@@ -390,7 +386,7 @@ BEGIN
             ORDER BY COLUMN_08 ASC, EXCEL_ROW_INDEX ASC;
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> v_target_ym;
+            WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 3: 증권번호 중복 편집
             -- ① 중복 증권번호의 [구분]=각각"취소,정상"이면 [구분]="취소"로 수정 및 중복데이터 행삭제
@@ -474,7 +470,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_26 = '년납',
-                COLUMN_27 = v_target_ym,
+                COLUMN_27 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_28 = COLUMN_10;
 
             -- Rule 2: [증권번호] 오름차순 정렬 후 [구분]="환추징"이면 데이터 행삭제
@@ -488,7 +484,7 @@ BEGIN
 
             -- Rule 3: [보험시작일]<"해당월"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) < v_target_ym;
+            WHERE LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) < DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 4: 중복 증번 편집
             -- ① 중복 증권번호 중 [구분]="정상,취소"이면 [구분]="취소" 값수정 및 [보험료]="마이너스금액" 데이터 행삭제
@@ -555,7 +551,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_21 = '년납',
-                COLUMN_22 = v_target_ym,
+                COLUMN_22 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_23 = COLUMN_09;
 
             -- Rule 2: 중복 증권번호 중 [구분]="정상,취소"이면 [구분]="취소" 값수정 및 [보험료]="마이너스금액" 데이터 행삭제
@@ -584,7 +580,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE (COLUMN_14 = '1' OR CAST(IFNULL(COLUMN_14, '0') AS SIGNED) = 1)
               AND COLUMN_17 NOT IN ('월납', '일시납')
-              AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> v_target_ym;
+              AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
 
         END IF;
 
