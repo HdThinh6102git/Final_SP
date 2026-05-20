@@ -23,8 +23,6 @@ BEGIN
 
     -- [SET logic]
     SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    -- Rule 6 cutoff: 38 months
-    SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 38 MONTH), '%Y%m');
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -367,7 +365,8 @@ BEGIN
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_07 = '시효'
             WHERE COLUMN_07 = '실효' 
               AND COLUMN_29 IS NOT NULL AND COLUMN_29 <> ''
-              AND LEFT(REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''), 6) <= v_cutoff_ym;
+              AND LEFT(REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(v_target_ym, INTERVAL 38 MONTH), '%Y%m');
+              
         END IF;
 
         -- 4. Build sql query insert processed table
