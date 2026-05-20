@@ -1384,8 +1384,8 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NOT NULL 
-              AND TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 IS NULL 
+              OR TRIM(COLUMN_23) <> '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1428,8 +1428,8 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NOT NULL
-              AND TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 IS NULL
+              OR TRIM(COLUMN_23) <> '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
