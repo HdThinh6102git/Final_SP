@@ -13,7 +13,6 @@ BEGIN
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'CDL';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
-    DECLARE v_cutoff_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -366,7 +365,7 @@ BEGIN
             WHERE COLUMN_07 = '실효' 
               AND COLUMN_29 IS NOT NULL AND COLUMN_29 <> ''
               AND LEFT(REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(v_target_ym, INTERVAL 38 MONTH), '%Y%m');
-              
+
         END IF;
 
         -- 4. Build sql query insert processed table

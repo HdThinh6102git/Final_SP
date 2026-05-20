@@ -28,6 +28,7 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'SSF';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
+    
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
