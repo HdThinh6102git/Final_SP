@@ -340,24 +340,11 @@ BEGIN
                 -- Rule 4: [계약구분]="공동인수"이면 중복증번의 [공동인수보험료]와 [수정보험료] 값을 각각 합하여 [공동인수보험료],[수정보험료]로 값수정해주고 [보험료]값도 수정한 [공동인수보험료]로 변경해줌
                 DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
                 CREATE TEMPORARY TABLE tmp_agg_data
-                SELECT
-                    COLUMN_12,
-                    SUM(CAST(REPLACE(IFNULL(COLUMN_29, '0'), ',', '') AS DECIMAL(18,2))) AS s29,
-                    SUM(CAST(REPLACE(IFNULL(COLUMN_24, '0'), ',', '') AS DECIMAL(18,2))) AS s24
-                FROM T_TEMP_RPA_HDG_PROCESSED
-                WHERE TRIM(IFNULL(COLUMN_32, '')) LIKE '%공동인수%'
-                GROUP BY COLUMN_12
-                HAVING COUNT(*) > 1;
+                SELECT COLUMN_12, SUM(CAST(REPLACE(IFNULL(COLUMN_29,'0'),',','') AS SIGNED)) AS s29, SUM(CAST(REPLACE(IFNULL(COLUMN_24,'0'),',','') AS SIGNED)) AS s24, MIN(SYS_ID) AS mid
+                FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_32 LIKE '%공동인수%' GROUP BY COLUMN_12 HAVING COUNT(*)>1;
+                UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.SYS_ID = a.mid SET t.COLUMN_29 = CAST(a.s29 AS CHAR), t.COLUMN_24 = CAST(a.s24 AS CHAR), t.COLUMN_19 = CAST(a.s29 AS CHAR);
+                DELETE t FROM T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_agg_data a ON t.COLUMN_12 = a.COLUMN_12 WHERE t.SYS_ID <> a.mid;
 
-                UPDATE T_TEMP_RPA_HDG_PROCESSED t
-                INNER JOIN tmp_agg_data a
-                    ON t.COLUMN_12 = a.COLUMN_12
-                SET
-                    t.COLUMN_29 = CAST(a.s29 AS CHAR),
-                    t.COLUMN_24 = CAST(a.s24 AS CHAR),
-                    t.COLUMN_19 = CAST(a.s29 AS CHAR)
-                WHERE TRIM(IFNULL(t.COLUMN_32, '')) LIKE '%공동인수%';
-        
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
                 -- Rule 1: 맨 마지막열 값 추가(3개)
                 -- ① 항목명I : 납기구분 / 항목값 : 년납
@@ -380,20 +367,9 @@ BEGIN
                 -- Rule 3: 계약번호 중복 편집
                 -- Rule 3.1: 중복 계약번호의 [배서구분]=각각"취소,정상"이면 [배서구분]="취소"로 수정 및 [보험료]="마이너스금액" 데이터 행삭제
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
-
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='취소')>0 AND SUM(COLUMN_31='정상')>0;
-                
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '취소';
-
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED 
-                WHERE 
-                    COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case)
-                    AND REPLACE(IFNULL(COLUMN_19, '0'), ',', '')
-                        REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                    AND CAST(
-                            REPLACE(IFNULL(COLUMN_19, '0'), ',', '')
-                            AS DECIMAL(15,2)
-                        ) < 0;
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
                 
                 -- Rule 3.2: 중복 계약번호의 [배서구분]=모두 "정상"인 증번들은 [보험료]와 [수정보험료]를 합하여 한건으로 값수정
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen;
