@@ -2,9 +2,10 @@
  * SP_RPA_KBL
  * Description : Process KB Life insurance data
  * Parameters  :
- *   IN IN_BATCH_ID       : Batch ID to process
- *   IN IN_INSURANCE_TYPE : Insurance type (LIFE)
- *   IN IN_CONTRACT_TYPE  : Contract type (NEW / EXISTING)
+ *   IN_BATCH_ID       : Batch ID to process
+ *   IN_INSURANCE_TYPE : Insurance type (LIFE)
+ *   IN_CONTRACT_TYPE  : Contract type (NEW / EXISTING)
+ *   IN_TARGET_DATE    : Target date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by contract type
  *   2. Execute if column mapping is valid
@@ -18,7 +19,8 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_KBL`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_DATE VARCHAR(10)
 )
 BEGIN
     -- [DECLARE variables]
@@ -28,12 +30,31 @@ BEGIN
     DECLARE v_proc_table VARCHAR(100) DEFAULT '';
     DECLARE v_row_count       INT          DEFAULT 0;
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'KBL';
+    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_KBL_PROCESSED;
     END;
+
+    -- [SET internal logic]
+    IF TRIM(IFNULL(IN_TARGET_DATE, '')) = '' THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+
+    ELSEIF TRIM(IN_TARGET_DATE) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    AND STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d') IS NOT NULL
+    AND DATE_FORMAT(STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d'), '%Y-%m-%d') = TRIM(IN_TARGET_DATE) THEN
+
+        SET v_target_ym = DATE_FORMAT(
+            STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d'),
+            '%Y%m'
+        );
+
+    ELSE
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Invalid IN_TARGET_DATE. Expected YYYY-MM-DD.';
+    END IF;
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -375,7 +396,13 @@ BEGIN
             UPDATE T_TEMP_RPA_KBL_PROCESSED
             SET COLUMN_11 = '실효'
             WHERE COLUMN_11 = '신계약'
-              AND REPLACE(COLUMN_16, '-', '') = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH), '%Y%m');
+            AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_16), '-', ''), '.', ''), 6) = DATE_FORMAT(
+                DATE_SUB(
+                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                    INTERVAL 2 MONTH
+                ),
+                '%Y%m'
+            );
 
             -- Rule 5: [계약상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
             UPDATE T_TEMP_RPA_KBL_PROCESSED
@@ -383,7 +410,13 @@ BEGIN
             WHERE COLUMN_11 IN ('실효(환급금없는실효)', '실효(환급금있는실효)')
               AND COLUMN_16 IS NOT NULL
               AND COLUMN_16 <> ''
-              AND REPLACE(LEFT(COLUMN_16, 7), '-', '') <= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
+              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_16), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                DATE_SUB(
+                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                    INTERVAL 38 MONTH
+                ),
+                '%Y%m'
+            );
 
         END IF;
 

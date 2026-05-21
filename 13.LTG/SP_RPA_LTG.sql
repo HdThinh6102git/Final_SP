@@ -5,6 +5,7 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
  *   IN_CONTRACT_TYPE  : Contract type (NEW / EXT)
+ *   IN_TARGET_DATE    : Target date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by insurance type / contract type
  *   2. Execute if column mapping is valid
@@ -18,7 +19,8 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_LTG`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_DATE VARCHAR(10)
 )
 BEGIN
     -- [DECLARE variables]
@@ -28,8 +30,7 @@ BEGIN
     DECLARE v_company_code     VARCHAR(10)  DEFAULT 'LTG';
     DECLARE v_raw_table        VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table  VARCHAR(100) DEFAULT '';
-    DECLARE v_current_ym       VARCHAR(6)   DEFAULT '';
-    DECLARE v_cutoff_ym        VARCHAR(6)   DEFAULT '';
+    DECLARE v_target_ym       VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -38,9 +39,23 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_ltg_dup_case;
     END;
 
-    -- [SET logic]
-    SET v_current_ym = DATE_FORMAT(CURDATE(), '%Y%m');
-    SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
+    -- [SET internal logic]
+    IF TRIM(IFNULL(IN_TARGET_DATE, '')) = '' THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+
+    ELSEIF TRIM(IN_TARGET_DATE) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    AND STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d') IS NOT NULL
+    AND DATE_FORMAT(STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d'), '%Y-%m-%d') = TRIM(IN_TARGET_DATE) THEN
+
+        SET v_target_ym = DATE_FORMAT(
+            STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d'),
+            '%Y%m'
+        );
+
+    ELSE
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Invalid IN_TARGET_DATE. Expected YYYY-MM-DD.';
+    END IF;
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -1476,7 +1491,7 @@ BEGIN
              WHERE COLUMN_11 = '정상'
                AND COLUMN_34 NOT LIKE '%납입면제%'
                AND COLUMN_34 NOT LIKE '%완납%'
-               AND COLUMN_05 < v_current_ym;
+               AND COLUMN_05 < v_target_ym;
 
             /* Rule 3: [상태]=“실효” & [납입년월]=“실효 3년 경과”면,
                [상태]값을 “시효”로 변경
@@ -1484,7 +1499,13 @@ BEGIN
             UPDATE T_TEMP_RPA_LTG_PROCESSED
                SET COLUMN_11 = '시효'
              WHERE COLUMN_11 = '실효'
-               AND COLUMN_05 <= v_cutoff_ym;
+                AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_05), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                    DATE_SUB(
+                        STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                        INTERVAL 38 MONTH
+                    ),
+                    '%Y%m'
+                );
         END IF;
 
         -- 2.4. Insert transformed data into processed table

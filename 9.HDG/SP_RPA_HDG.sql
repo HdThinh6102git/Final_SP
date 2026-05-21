@@ -1,7 +1,8 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_HDG`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_DATE VARCHAR(10)
 )
 BEGIN
     -- [DECLARE variables]
@@ -25,7 +26,22 @@ BEGIN
     END;
 
     -- [SET internal logic]
-    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    IF TRIM(IFNULL(IN_TARGET_DATE, '')) = '' THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+
+    ELSEIF TRIM(IN_TARGET_DATE) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    AND STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d') IS NOT NULL
+    AND DATE_FORMAT(STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d'), '%Y-%m-%d') = TRIM(IN_TARGET_DATE) THEN
+
+        SET v_target_ym = DATE_FORMAT(
+            STR_TO_DATE(TRIM(IN_TARGET_DATE), '%Y-%m-%d'),
+            '%Y%m'
+        );
+
+    ELSE
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Invalid IN_TARGET_DATE. Expected YYYY-MM-DD.';
+    END IF;
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
