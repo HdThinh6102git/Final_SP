@@ -420,7 +420,13 @@ BEGIN
             WHERE COLUMN_31 = '실효'
               AND COLUMN_25 IS NOT NULL
               AND COLUMN_25 <> ''
-              AND LEFT(REPLACE(REPLACE(COLUMN_25, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
+              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_25), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                    DATE_SUB(
+                        STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                        INTERVAL 38 MONTH
+                    ),
+                    '%Y%m'
+                );
 
         END IF;
 
