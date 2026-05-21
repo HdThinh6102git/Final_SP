@@ -982,7 +982,7 @@ BEGIN
                         INTERVAL 38 MONTH
                     ),
                     '%Y%m'
-                )
+                );
         END IF;
 
         SET @sql_insert = CONCAT(
