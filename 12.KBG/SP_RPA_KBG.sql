@@ -458,12 +458,26 @@ BEGIN
 
             -- Rule 4: [보험료],[수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_KBG_PROCESSED
-            SET COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
-            WHERE REPLACE(IFNULL(COLUMN_20, '0'), ',', '') REGEXP '^-[0-9]+';
+            SET 
+            COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
+            WHERE
+            REPLACE(IFNULL(COLUMN_20, '0'), ',', '') 
+                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+            AND CAST(
+                        REPLACE(IFNULL(COLUMN_20, '0'), ',', '') 
+                        AS DECIMAL(15,2)
+            ) < 0; 
 
             UPDATE T_TEMP_RPA_KBG_PROCESSED
-            SET COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
-            WHERE REPLACE(IFNULL(COLUMN_22, '0'), ',', '') REGEXP '^-[0-9]+';
+            SET
+            COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
+            WHERE
+            REPLACE(IFNULL(COLUMN_22, '0'), ',', '') 
+                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+            AND CAST(
+                        REPLACE(IFNULL(COLUMN_22, '0'), ',', '') 
+                        AS DECIMAL(15,2)
+            ) < 0; 
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -505,8 +519,14 @@ BEGIN
             SET t.COLUMN_21 = '취소';
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
-              AND REPLACE(IFNULL(COLUMN_19, '0'), ',', '') REGEXP '^-[0-9]+';
+            WHERE 
+            COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
+            REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
+                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+            AND CAST(
+                        REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
+                        AS DECIMAL(15,2)
+            ) < 0; 
 
             -- ② 중복 증권번호 중 [상품명]="공동"이면 [보험료]="보험료 합산" 한건으로 수정 및 중복 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_kbg_agg_data;
@@ -572,8 +592,14 @@ BEGIN
             SET t.COLUMN_16 = '취소';
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
-              AND REPLACE(IFNULL(COLUMN_15, '0'), ',', '') REGEXP '^-[0-9]+';
+            WHERE 
+            COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
+            REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
+                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+            AND CAST(
+                        REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
+                        AS DECIMAL(15,2)
+            ) < 0;
 
             -- Rule 3: [건수]="0"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
@@ -583,7 +609,7 @@ BEGIN
             -- Rule 4: [건수]="1" & [납입방법]≠"월납,일시납"이고 [보험시작일자]≠"해당월"인 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE (COLUMN_14 = '1' OR CAST(IFNULL(COLUMN_14, '0') AS SIGNED) = 1)
-              AND COLUMN_17 NOT IN ('월납', '일시납')
+              AND IFNULL(COLUMN_17, '') NOT IN ('월납', '일시납')
               AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> v_target_ym;
 
         END IF;
