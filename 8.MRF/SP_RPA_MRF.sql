@@ -976,7 +976,13 @@ BEGIN
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_53 = '시효'
             WHERE COLUMN_56 = '실효'
-              AND COLUMN_08 <= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
+              AND COLUMN_08 <= DATE_FORMAT(
+                    DATE_SUB(
+                        STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                        INTERVAL 38 MONTH
+                    ),
+                    '%Y%m'
+                )
         END IF;
 
         SET @sql_insert = CONCAT(
