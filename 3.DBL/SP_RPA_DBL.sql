@@ -206,10 +206,13 @@ BEGIN
             WHERE COLUMN_18 = '실효'
               AND COLUMN_26 IS NOT NULL
               AND COLUMN_26 <> ''
-              AND PERIOD_DIFF(
-                    DATE_FORMAT(CURDATE(), '%Y%m'),
-                    LEFT(REPLACE(REPLACE(COLUMN_26, '-', ''), '.', ''), 6)
-                  ) >= 38;
+              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_26), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                DATE_SUB(
+                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                    INTERVAL 38 MONTH
+                ),
+                '%Y%m'
+            );
         END IF;
 
         -- 2.4. Insert transformed data into processed table
