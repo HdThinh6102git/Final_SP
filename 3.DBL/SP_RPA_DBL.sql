@@ -5,6 +5,8 @@
  *   IN IN_BATCH_ID       : Batch ID to process
  *   IN IN_INSURANCE_TYPE : Insurance type (LIF)
  *   IN IN_CONTRACT_TYPE  : Contract type (EXT only)
+ *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
+ *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by contract type (EXT)
  *   2. Execute if column mapping is valid
@@ -18,7 +20,9 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_DBL`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_START_DATE DATE,
+    IN IN_TARGET_END_DATE DATE
 )
 BEGIN
     -- [DECLARE variables]
@@ -28,12 +32,20 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'DBL';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_proc_table VARCHAR(100) DEFAULT '';
+    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_DBL_PROCESSED;
     END;
+
+    -- [SET internal logic]
+    IF IN_TARGET_START_DATE IS NULL THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    ELSE
+        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
+    END IF;
 
      -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -206,10 +218,13 @@ BEGIN
             WHERE COLUMN_18 = '실효'
               AND COLUMN_26 IS NOT NULL
               AND COLUMN_26 <> ''
-              AND PERIOD_DIFF(
-                    DATE_FORMAT(CURDATE(), '%Y%m'),
-                    LEFT(REPLACE(REPLACE(COLUMN_26, '-', ''), '.', ''), 6)
-                  ) >= 38;
+              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_26), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                DATE_SUB(
+                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                    INTERVAL 38 MONTH
+                ),
+                '%Y%m'
+            );
         END IF;
 
         -- 2.4. Insert transformed data into processed table

@@ -5,6 +5,8 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LIF)
  *   IN_CONTRACT_TYPE  : Contract type (NEW / EXT)
+ *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
+ *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by insurance type / contract type
  *   2. Execute if column mapping is valid
@@ -18,7 +20,9 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_MTL`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_START_DATE DATE,
+    IN IN_TARGET_END_DATE DATE
 )
 BEGIN
     -- [DECLARE variables]
@@ -28,12 +32,20 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'MTL';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_proc_table VARCHAR(100) DEFAULT '';
+    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MTL_PROCESSED;
     END;
+
+    -- [SET internal logic]
+    IF IN_TARGET_START_DATE IS NULL THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    ELSE
+        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
+    END IF;
 
      -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -374,7 +386,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_MTL_PROCESSED
             SET COLUMN_39 = '년납',
-                COLUMN_40 = DATE_FORMAT(CURDATE(), '%Y%m'),
+                COLUMN_40 = v_target_ym,
                 COLUMN_41 = COLUMN_09;
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
@@ -408,7 +420,13 @@ BEGIN
             WHERE COLUMN_31 = '실효'
               AND COLUMN_25 IS NOT NULL
               AND COLUMN_25 <> ''
-              AND LEFT(REPLACE(REPLACE(COLUMN_25, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
+              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_25), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                    DATE_SUB(
+                        STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                        INTERVAL 38 MONTH
+                    ),
+                    '%Y%m'
+                );
 
         END IF;
 

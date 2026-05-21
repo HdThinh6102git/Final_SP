@@ -5,11 +5,9 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
  *   IN_CONTRACT_TYPE  : Contract type (NEW / EXT)
- *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
- *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by insurance type / contract type
- *   2. Execute if column smapping is valid
+ *   2. Execute if column mapping is valid
  *      2.1. Create temp table
  *      2.2. Insert raw data into temp table
  *      2.3. Apply transformation rules (LTR / CAR / GEN / EXT)
@@ -20,9 +18,7 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_LTG`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20),
-    IN IN_TARGET_START_DATE DATE,
-    IN IN_TARGET_END_DATE DATE
+    IN IN_CONTRACT_TYPE  VARCHAR(20)
 )
 BEGIN
     -- [DECLARE variables]
@@ -32,7 +28,8 @@ BEGIN
     DECLARE v_company_code     VARCHAR(10)  DEFAULT 'LTG';
     DECLARE v_raw_table        VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table  VARCHAR(100) DEFAULT '';
-    DECLARE v_target_ym       VARCHAR(6)   DEFAULT '';
+    DECLARE v_current_ym       VARCHAR(6)   DEFAULT '';
+    DECLARE v_cutoff_ym        VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -41,12 +38,9 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_ltg_dup_case;
     END;
 
-    -- [SET internal logic]
-    IF IN_TARGET_START_DATE IS NULL THEN
-        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    ELSE
-        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
-    END IF;
+    -- [SET logic]
+    SET v_current_ym = DATE_FORMAT(CURDATE(), '%Y%m');
+    SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 38 MONTH), '%Y%m');
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -1331,8 +1325,7 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NULL 
-              OR TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 != '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1348,22 +1341,17 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_23 = '정상' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_23 IN ('취소/철회', '취소', '철회') THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_23 = '취소/철회' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_LTG_PROCESSED t
             INNER JOIN tmp_ltg_dup_case d
                     ON t.COLUMN_08 = d.COLUMN_08
                SET t.COLUMN_23 = '취소';
 
-            DELETE FROM T_TEMP_RPA_LTG_PROCESSED
-            WHERE 
-                COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
-                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            DELETE
+              FROM T_TEMP_RPA_LTG_PROCESSED
+             WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
+               AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
             /* Rule 4: 납입기간="100"면 원수사 원부확인하여 "년납"으로 값수정 */
             UPDATE T_TEMP_RPA_LTG_PROCESSED a
@@ -1390,8 +1378,7 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NULL 
-              OR TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 != '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1407,22 +1394,17 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_23 = '정상' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_23 IN ('취소/철회', '취소', '철회') THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_23 = '취소/철회' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_LTG_PROCESSED t
             INNER JOIN tmp_ltg_dup_case d
                     ON t.COLUMN_08 = d.COLUMN_08
                SET t.COLUMN_23 = '취소';
 
-            DELETE FROM T_TEMP_RPA_LTG_PROCESSED
-            WHERE
-                COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
-                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            DELETE
+              FROM T_TEMP_RPA_LTG_PROCESSED
+             WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
+               AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: 맨 마지막열 값 추가(1개)
@@ -1434,8 +1416,7 @@ BEGIN
             /* Rule 2: [처리구분]≠"신규/추징"이면 데이터 행삭제 */
             DELETE
               FROM T_TEMP_RPA_LTG_PROCESSED
-             WHERE COLUMN_23 IS NULL
-              OR TRIM(COLUMN_23) <> '신규/추징';
+             WHERE COLUMN_23 != '신규/추징';
 
             /* Rule 3.1: [증권번호] 오름차순 정렬 */
             SET @seq := 0;
@@ -1451,22 +1432,17 @@ BEGIN
               FROM T_TEMP_RPA_LTG_PROCESSED
              GROUP BY COLUMN_08
             HAVING SUM(CASE WHEN COLUMN_23 = '정상' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_23 IN ('취소/철회', '취소', '철회') THEN 1 ELSE 0 END) > 0;
+               AND SUM(CASE WHEN COLUMN_23 = '취소/철회' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_LTG_PROCESSED t
             INNER JOIN tmp_ltg_dup_case d
                     ON t.COLUMN_08 = d.COLUMN_08
                SET t.COLUMN_23 = '취소';
 
-            DELETE FROM T_TEMP_RPA_LTG_PROCESSED
-            WHERE 
-                COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
-                AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                AND CAST(
-                        REPLACE(IFNULL(COLUMN_30, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            DELETE
+              FROM T_TEMP_RPA_LTG_PROCESSED
+             WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_ltg_dup_case)
+               AND REPLACE(IFNULL(COLUMN_30, '0'), ',', '') REGEXP '^-[0-9]+';
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
              /* Rule 1: [상태]=“정상,불능”이면 [실적기준일(변경일자)]=“0000-00-00”으로 수정 */
@@ -1482,7 +1458,7 @@ BEGIN
              WHERE COLUMN_11 = '정상'
                AND COLUMN_34 NOT LIKE '%납입면제%'
                AND COLUMN_34 NOT LIKE '%완납%'
-               AND COLUMN_05 < v_target_ym;
+               AND COLUMN_05 < v_current_ym;
 
             /* Rule 3: [상태]=“실효” & [납입년월]=“실효 3년 경과”면,
                [상태]값을 “시효”로 변경
@@ -1490,13 +1466,7 @@ BEGIN
             UPDATE T_TEMP_RPA_LTG_PROCESSED
                SET COLUMN_11 = '시효'
              WHERE COLUMN_11 = '실효'
-                AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_05), '-', ''), '.', ''), 6) <= DATE_FORMAT(
-                    DATE_SUB(
-                        STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
-                        INTERVAL 38 MONTH
-                    ),
-                    '%Y%m'
-                );
+               AND COLUMN_05 <= v_cutoff_ym;
         END IF;
 
         -- 2.4. Insert transformed data into processed table

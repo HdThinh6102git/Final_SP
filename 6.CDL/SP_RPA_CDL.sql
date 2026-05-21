@@ -1,7 +1,9 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_CDL`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_START_DATE DATE,
+    IN IN_TARGET_END_DATE DATE
 )
 BEGIN
     -- [DECLARE variables]
@@ -13,7 +15,6 @@ BEGIN
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'CDL';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
-    DECLARE v_cutoff_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -21,10 +22,12 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_CDL_PROCESSED;
     END;
 
-    -- [SET logic]
-    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    -- Rule 6 cutoff: 38 months
-    SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 38 MONTH), '%Y%m');
+    -- [SET internal logic]
+    IF IN_TARGET_START_DATE IS NULL THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    ELSE
+        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
+    END IF;
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -367,7 +370,8 @@ BEGIN
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_07 = '시효'
             WHERE COLUMN_07 = '실효' 
               AND COLUMN_29 IS NOT NULL AND COLUMN_29 <> ''
-              AND LEFT(REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''), 6) <= v_cutoff_ym;
+              AND LEFT(REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(v_target_ym, INTERVAL 38 MONTH), '%Y%m');
+
         END IF;
 
         -- 4. Build sql query insert processed table

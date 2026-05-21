@@ -1,9 +1,7 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_HKF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20),
-    IN IN_TARGET_START_DATE DATE,
-    IN IN_TARGET_END_DATE DATE
+    IN IN_CONTRACT_TYPE  VARCHAR(20)
 )
 BEGIN
     -- [DECLARE variables]
@@ -25,13 +23,7 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen_hkf;
     END;
 
-    -- [SET internal logic]
-    IF IN_TARGET_START_DATE IS NULL THEN
-        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    ELSE
-        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
-    END IF;
-    
+    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
     -- I. Mapping Columns
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         -- Mapping for LTR (Columns 01-30 + New Columns 31-32)
@@ -452,26 +444,12 @@ BEGIN
 
                 -- Rule 2.4: [영수보험료],[수정보험료]="마이너스 금액"이면 "플러스 금액"으로 값수정
                 UPDATE T_TEMP_RPA_HKF_PROCESSED 
-                SET 
-                COLUMN_14 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_14,'0'), ',', '') AS SIGNED)) AS CHAR) 
-                WHERE 
-                    REPLACE(IFNULL(COLUMN_14, '0'), ',', '')
-                        REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                    AND CAST(
-                            REPLACE(IFNULL(COLUMN_14, '0'), ',', '')
-                            AS DECIMAL(15,2)
-                        ) < 0;
+                SET COLUMN_14 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_14,'0'), ',', '') AS SIGNED)) AS CHAR) 
+                WHERE REPLACE(COLUMN_14, ',', '') REGEXP '^-[0-9]+';
                 
                 UPDATE T_TEMP_RPA_HKF_PROCESSED 
-                SET 
-                COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22,'0'), ',', '') AS SIGNED)) AS CHAR) 
-                WHERE 
-                    REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
-                        REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                    AND CAST(
-                            REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
-                            AS DECIMAL(15,2)
-                        ) < 0;
+                SET COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22,'0'), ',', '') AS SIGNED)) AS CHAR) 
+                WHERE REPLACE(COLUMN_22, ',', '') REGEXP '^-[0-9]+';
 
                 /* 
                     Rule 3: [계약일자]≠"해당월"면 데이터 행삭제 

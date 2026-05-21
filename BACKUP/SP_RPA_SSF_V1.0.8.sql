@@ -5,8 +5,6 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
  *   IN_CONTRACT_TYPE  : Contract type (NEW only)
- *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
- *   IN_TARGET_END_DATE      : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by insurance type (LTR / CAR / GEN)
  *   2. Execute if column mapping is valid
@@ -20,9 +18,7 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_SSF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20),
-    IN IN_TARGET_START_DATE DATE,
-    IN IN_TARGET_END_DATE DATE
+    IN IN_CONTRACT_TYPE  VARCHAR(20)
 )
 BEGIN
     -- [DECLARE variables]
@@ -32,7 +28,7 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'SSF';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
-    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
+    
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -54,13 +50,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
         DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_dup;
     END;
-
-    -- [SET internal logic]
-    IF IN_TARGET_START_DATE IS NULL THEN
-        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    ELSE
-        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
-    END IF;
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -797,7 +786,7 @@ BEGIN
             */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
             SET COLUMN_67 = '년납',
-                COLUMN_68 = v_target_ym;
+                COLUMN_68 = DATE_FORMAT(CURDATE(), '%Y%m');
 
             /* Rule 2: [계약상태] 편집
                ① [계약상태]≠"신계약,취소,해지"이면 데이터 행삭제
@@ -810,7 +799,7 @@ BEGIN
             -- Rule 2②
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_22 IN ('해지', '취소')
-              AND DATE_FORMAT(COLUMN_24, '%Y%m') != v_target_ym;
+              AND DATE_FORMAT(COLUMN_24, '%Y%m') != DATE_FORMAT(CURDATE(), '%Y%m');
 
            /* Rule 3: 계약번호 중복 편집
             ① 계약번호 오름차순 정렬
@@ -1028,7 +1017,7 @@ BEGIN
             FROM T_TEMP_RPA_SSF_PROCESSED
             GROUP BY COLUMN_01
             HAVING COUNT(*) > 1
-               AND SUM(CASE WHEN COLUMN_22 <> '배서' THEN 1 ELSE 0 END) = 0;
+               AND SUM(CASE WHEN COLUMN_22 != '배서' THEN 1 ELSE 0 END) = 0;
 
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_all_bseo);
@@ -1053,21 +1042,14 @@ BEGIN
 
             /* Rule 5: [보험료]="마이너스"이면 "플러스"값으로 수정 */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
-            SET 
-            COLUMN_08 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR)
-            WHERE 
-            REPLACE(IFNULL(COLUMN_08, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_08, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            SET COLUMN_08 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR)
+            WHERE COLUMN_08 LIKE '-%';
 
             /* Rule 6 (추가요건): 보험시기 항목 < 해당월, 데이터 행삭제 필요(추가요건) */
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_25 IS NOT NULL
               AND TRIM(COLUMN_25) <> ''
-              AND DATE_FORMAT(COLUMN_25, '%Y%m') < v_target_ym;
+              AND DATE_FORMAT(COLUMN_25, '%Y%m') < DATE_FORMAT(CURDATE(), '%Y%m');
     
         -- [GEN Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
@@ -1107,7 +1089,7 @@ BEGIN
             FROM T_TEMP_RPA_SSF_PROCESSED
             GROUP BY COLUMN_01
             HAVING COUNT(*) > 1
-               AND SUM(CASE WHEN COLUMN_22 <> '배서' THEN 1 ELSE 0 END) = 0;
+               AND SUM(CASE WHEN COLUMN_22 != '배서' THEN 1 ELSE 0 END) = 0;
 
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_all_bseo);
@@ -1132,15 +1114,8 @@ BEGIN
 
             /* Rule 5: [보험료]="마이너스"이면 "플러스"값으로 수정 */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
-            SET 
-            COLUMN_08 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR)
-            WHERE 
-            REPLACE(IFNULL(COLUMN_08, '0'), ',', '')
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_08, '0'), ',', '')
-                        AS DECIMAL(15,2)
-                    ) < 0;
+            SET COLUMN_08 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR)
+            WHERE COLUMN_08 LIKE '-%';
 
         END IF;
 

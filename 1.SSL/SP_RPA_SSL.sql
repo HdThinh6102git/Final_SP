@@ -1,7 +1,9 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_SSL`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_START_DATE DATE,
+    IN IN_TARGET_END_DATE DATE
 )
 BEGIN
     -- [DECLARE variables]
@@ -12,12 +14,20 @@ BEGIN
     DECLARE v_proc_table   VARCHAR(100) DEFAULT '';
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'SSL';
+    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_SSL_PROCESSED;
     END;
+
+    -- [SET internal logic]
+    IF IN_TARGET_START_DATE IS NULL THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    ELSE
+        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
+    END IF;
 
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
@@ -333,7 +343,13 @@ BEGIN
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_22 = '시효'
             WHERE COLUMN_22 = '실효'
-              AND PERIOD_DIFF(DATE_FORMAT(CURDATE(), '%Y%m'), REPLACE(COLUMN_15, '-', '')) >= 38;
+             AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_15), '-', ''), '.', ''), 6) <= DATE_FORMAT(
+                DATE_SUB(
+                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                    INTERVAL 38 MONTH
+                ),
+                '%Y%m'
+            );
         END IF;
 
         -- 4. Build sql query insert processed table

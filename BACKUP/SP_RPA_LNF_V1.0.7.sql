@@ -5,8 +5,6 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LIF)
  *   IN_CONTRACT_TYPE  : Contract type (NEW / EXT)
- *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
- *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by contract type (NEW / EXT)
  *   2. Execute if column mapping is valid
@@ -20,9 +18,7 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_LNF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20),
-    IN IN_TARGET_START_DATE DATE,
-    IN IN_TARGET_END_DATE DATE
+    IN IN_CONTRACT_TYPE  VARCHAR(20)
 )
 BEGIN
     -- [DECLARE variables]
@@ -34,19 +30,17 @@ BEGIN
     DECLARE v_row_count    INT          DEFAULT 0;
     DECLARE v_company_code VARCHAR(10)  DEFAULT 'LNF';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
+    DECLARE v_cutoff_ym    VARCHAR(6)   DEFAULT '';
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_LNF_PROCESSED;
     END;
 
-    -- [SET internal logic]
-    IF IN_TARGET_START_DATE IS NULL THEN
-        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    ELSE
-        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
-    END IF;
-    
+    -- [SET logic]
+    SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    SET v_cutoff_ym = DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 38 MONTH), '%Y%m');
+
     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
         SET v_raw_table = 'T_RPA_LIFE_RAW';
@@ -351,7 +345,7 @@ BEGIN
             */
             UPDATE T_TEMP_RPA_LNF_PROCESSED
             SET COLUMN_30 = '년납',
-                COLUMN_31 = v_target_ym;
+                COLUMN_31 = DATE_FORMAT(CURDATE(), '%Y%m');
 
         ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             /* Rule 1: [계약상태]="실효,시효,유지,청약"이면 [소멸일자]에 "0000-00-00"으로 수정 */
@@ -382,13 +376,7 @@ BEGIN
             WHERE COLUMN_29 = '실효'
               AND COLUMN_39 IS NOT NULL
               AND COLUMN_39 <> ''
-              AND REPLACE(COLUMN_39, '-', '') <= DATE_FORMAT(
-                DATE_SUB(
-                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
-                    INTERVAL 38 MONTH
-                ),
-                '%Y%m'
-              );
+              AND REPLACE(COLUMN_39, '-', '') <= v_cutoff_ym;
         END IF;
 
         -- 2.4. Insert transformed data into processed table

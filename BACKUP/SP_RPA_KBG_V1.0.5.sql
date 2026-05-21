@@ -5,8 +5,6 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
  *   IN_CONTRACT_TYPE  : Contract type (NEW only)
- *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
- *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by insurance type (LTR / CAR / GEN)
  *   2. Execute if column mapping is valid
@@ -20,9 +18,7 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_KBG`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20),
-    IN IN_TARGET_START_DATE DATE,
-    IN IN_TARGET_END_DATE DATE
+    IN IN_CONTRACT_TYPE  VARCHAR(20)
 )
 BEGIN
     -- [DECLARE variables]
@@ -32,7 +28,6 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'KBG';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
-    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -43,13 +38,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_kbg_agg_data;
         DROP TEMPORARY TABLE IF EXISTS tmp_kbg_dup_all_normal;
     END;
-
-    -- [SET internal logic]
-    IF IN_TARGET_START_DATE IS NULL THEN
-        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
-    ELSE
-        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
-    END IF;
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -388,7 +376,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_29 = '년납',
-                COLUMN_30 = v_target_ym,
+                COLUMN_30 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_31 = COLUMN_09;
 
             -- Rule 2: [증권번호] 오름차순 정렬 정렬 후 [보험시기] ≠해당월이면 삭제
@@ -398,7 +386,7 @@ BEGIN
             ORDER BY COLUMN_08 ASC, EXCEL_ROW_INDEX ASC;
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> v_target_ym;
+            WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 3: 증권번호 중복 편집
             -- ① 중복 증권번호의 [구분]=각각"취소,정상"이면 [구분]="취소"로 수정 및 중복데이터 행삭제
@@ -466,26 +454,12 @@ BEGIN
 
             -- Rule 4: [보험료],[수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_KBG_PROCESSED
-            SET 
-            COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
-            WHERE
-            REPLACE(IFNULL(COLUMN_20, '0'), ',', '') 
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_20, '0'), ',', '') 
-                        AS DECIMAL(15,2)
-            ) < 0; 
+            SET COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
+            WHERE REPLACE(IFNULL(COLUMN_20, '0'), ',', '') REGEXP '^-[0-9]+';
 
             UPDATE T_TEMP_RPA_KBG_PROCESSED
-            SET
-            COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
-            WHERE
-            REPLACE(IFNULL(COLUMN_22, '0'), ',', '') 
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_22, '0'), ',', '') 
-                        AS DECIMAL(15,2)
-            ) < 0; 
+            SET COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
+            WHERE REPLACE(IFNULL(COLUMN_22, '0'), ',', '') REGEXP '^-[0-9]+';
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
@@ -496,7 +470,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_26 = '년납',
-                COLUMN_27 = v_target_ym,
+                COLUMN_27 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_28 = COLUMN_10;
 
             -- Rule 2: [증권번호] 오름차순 정렬 후 [구분]="환추징"이면 데이터 행삭제
@@ -510,7 +484,7 @@ BEGIN
 
             -- Rule 3: [보험시작일]<"해당월"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) < v_target_ym;
+            WHERE LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) < DATE_FORMAT(CURDATE(), '%Y%m');
 
             -- Rule 4: 중복 증번 편집
             -- ① 중복 증권번호 중 [구분]="정상,취소"이면 [구분]="취소" 값수정 및 [보험료]="마이너스금액" 데이터 행삭제
@@ -527,14 +501,8 @@ BEGIN
             SET t.COLUMN_21 = '취소';
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE 
-            COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
-            REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
-                        AS DECIMAL(15,2)
-            ) < 0; 
+            WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
+              AND REPLACE(IFNULL(COLUMN_19, '0'), ',', '') REGEXP '^-[0-9]+';
 
             -- ② 중복 증권번호 중 [상품명]="공동"이면 [보험료]="보험료 합산" 한건으로 수정 및 중복 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_kbg_agg_data;
@@ -583,7 +551,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_21 = '년납',
-                COLUMN_22 = v_target_ym,
+                COLUMN_22 = DATE_FORMAT(CURDATE(), '%Y%m'),
                 COLUMN_23 = COLUMN_09;
 
             -- Rule 2: 중복 증권번호 중 [구분]="정상,취소"이면 [구분]="취소" 값수정 및 [보험료]="마이너스금액" 데이터 행삭제
@@ -600,14 +568,8 @@ BEGIN
             SET t.COLUMN_16 = '취소';
 
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE 
-            COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
-            REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
-                    REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-            AND CAST(
-                        REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
-                        AS DECIMAL(15,2)
-            ) < 0;
+            WHERE COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
+              AND REPLACE(IFNULL(COLUMN_15, '0'), ',', '') REGEXP '^-[0-9]+';
 
             -- Rule 3: [건수]="0"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
@@ -617,8 +579,8 @@ BEGIN
             -- Rule 4: [건수]="1" & [납입방법]≠"월납,일시납"이고 [보험시작일자]≠"해당월"인 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE (COLUMN_14 = '1' OR CAST(IFNULL(COLUMN_14, '0') AS SIGNED) = 1)
-              AND IFNULL(COLUMN_17, '') NOT IN ('월납', '일시납')
-              AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> v_target_ym;
+              AND COLUMN_17 NOT IN ('월납', '일시납')
+              AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
 
         END IF;
 

@@ -5,6 +5,8 @@
  *   IN_BATCH_ID       : Batch ID to process
  *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
  *   IN_CONTRACT_TYPE  : Contract type (NEW only)
+ *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
+ *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
  * Steps       :
  *   1. Hardcoded column mapping by insurance type (LTR / CAR / GEN)
  *   2. Execute if column mapping is valid
@@ -18,7 +20,9 @@
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_HWG`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
-    IN IN_CONTRACT_TYPE  VARCHAR(20)
+    IN IN_CONTRACT_TYPE  VARCHAR(20),
+    IN IN_TARGET_START_DATE DATE,
+    IN IN_TARGET_END_DATE DATE
 )
 BEGIN
     -- [DECLARE variables]
@@ -28,12 +32,20 @@ BEGIN
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'HWG';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
     DECLARE v_processed_table VARCHAR(100) DEFAULT '';
+    DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HWG_PROCESSED;
     END;
+
+    -- [SET internal logic]
+    IF IN_TARGET_START_DATE IS NULL THEN
+        SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
+    ELSE
+        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
+    END IF;
 
     -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
@@ -429,7 +441,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_HWG_PROCESSED
             SET COLUMN_37 = '년납',
-                COLUMN_38 = DATE_FORMAT(CURDATE(), '%Y%m'),
+                COLUMN_38 = v_target_ym,
                 COLUMN_39 = COLUMN_12;
 
             -- Rule 2: [월납환산보험료]="마이너스금액" 데이터 행삭제
@@ -448,7 +460,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_HWG_PROCESSED
             SET COLUMN_32 = '년납',
-                COLUMN_33 = DATE_FORMAT(CURDATE(), '%Y%m'),
+                COLUMN_33 = v_target_ym,
                 COLUMN_34 = '0',
                 COLUMN_35 = '일시납';
 
@@ -471,7 +483,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_HWG_PROCESSED
             SET COLUMN_25 = '년납',
-                COLUMN_26 = DATE_FORMAT(CURDATE(), '%Y%m'),
+                COLUMN_26 = v_target_ym,
                 COLUMN_27 = '0';
 
             -- Rule 2: [발생구분]="추징, 환급"이면 데이터 행삭제
@@ -481,7 +493,7 @@ BEGIN
             -- Rule 3: [발생구분]="해지" & [보험시기]≠"해당월"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
             WHERE COLUMN_20 = '해지'
-              AND LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> DATE_FORMAT(CURDATE(), '%Y%m');
+              AND LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> v_target_ym;
 
             -- Rule 4: [보험료]="마이너스 금액"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_HWG_PROCESSED
