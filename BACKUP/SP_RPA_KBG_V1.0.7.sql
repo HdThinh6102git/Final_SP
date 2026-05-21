@@ -458,15 +458,11 @@ BEGIN
             WHERE t.COLUMN_10 LIKE '%KB 금쪽같은 자녀보험%'
               AND t.SORT_ORDER_NO <> a.keep_sort_order_no;
 
-            DELETE t
-            FROM T_TEMP_RPA_KBG_PROCESSED t
+            DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             INNER JOIN tmp_kbg_agg_data a
                     ON t.COLUMN_08 = a.COLUMN_08
-            WHERE t.COLUMN_10 LIKE '%KB 금쪽같은 자녀보험%'
-            AND (
-                    t.COLUMN_19 = '0'
-                    OR CAST(IFNULL(t.COLUMN_19, '0') AS SIGNED) = 0
-                );
+            WHERE COLUMN_10 LIKE '%KB 금쪽같은 자녀보험%'
+              AND (COLUMN_19 = '0' OR CAST(IFNULL(COLUMN_19, '0') AS SIGNED) = 0);
 
             -- Rule 4: [보험료],[수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_KBG_PROCESSED
@@ -533,7 +529,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE 
             COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
-            AND REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
+            REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
                     REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
             AND CAST(
                         REPLACE(IFNULL(COLUMN_19, '0'), ',', '') 
@@ -606,7 +602,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE 
             COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
-            AND REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
+            REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
                     REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
             AND CAST(
                         REPLACE(IFNULL(COLUMN_15, '0'), ',', '') 
