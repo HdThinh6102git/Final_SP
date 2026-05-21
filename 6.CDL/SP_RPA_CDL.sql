@@ -370,7 +370,16 @@ BEGIN
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_07 = '시효'
             WHERE COLUMN_07 = '실효' 
               AND COLUMN_29 IS NOT NULL AND COLUMN_29 <> ''
-              AND LEFT(REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''), 6) <= DATE_FORMAT(DATE_SUB(v_target_ym, INTERVAL 38 MONTH), '%Y%m');
+              AND LEFT(
+                REPLACE(REPLACE(COLUMN_29, '-', ''), '.', ''),
+                6
+              ) <= DATE_FORMAT(
+                    DATE_SUB(
+                        STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                        INTERVAL 38 MONTH
+                    ),
+                    '%Y%m'
+                );
 
         END IF;
 
