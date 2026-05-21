@@ -307,7 +307,16 @@ BEGIN
                 DROP TEMPORARY TABLE IF EXISTS tmp_dup_case;
                 CREATE TEMPORARY TABLE tmp_dup_case SELECT COLUMN_12 FROM T_TEMP_RPA_HDG_PROCESSED GROUP BY COLUMN_12 HAVING SUM(COLUMN_31='철회')>0 AND SUM(COLUMN_31='정상')>0;
                 UPDATE T_TEMP_RPA_HDG_PROCESSED t INNER JOIN tmp_dup_case d ON t.COLUMN_12 = d.COLUMN_12 SET t.COLUMN_31 = '철회';
-                DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case) AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
+
+                DELETE FROM T_TEMP_RPA_HDG_PROCESSED 
+                WHERE 
+                    COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case)
+                    AND REPLACE(IFNULL(COLUMN_19, '0'), ',', '')
+                        REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+                    AND CAST(
+                            REPLACE(IFNULL(COLUMN_19, '0'), ',', '')
+                            AS DECIMAL(15,2)
+                        ) < 0;
                 
                 -- [Rule 4] [개시일]!=해당월 행 삭제
                 DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE LEFT(REPLACE(COLUMN_03, '-', ''), 6) <> v_target_ym;
