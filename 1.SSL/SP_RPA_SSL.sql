@@ -317,8 +317,14 @@ BEGIN
             --    → [최종납입년월]에 [유지년월] 값으로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_15 = COLUMN_26
-            WHERE COLUMN_15 = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH), '%Y-%m')
-              AND COLUMN_22 LIKE '%정상%';
+            WHERE COLUMN_15 = DATE_FORMAT(
+                DATE_SUB(
+                    STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
+                    INTERVAL 2 MONTH
+                ),
+                '%Y-%m'
+            )
+            AND COLUMN_22 LIKE '%정상%';
 
             -- Rule 3.3: [납입주기]=“6개월/12월납”이면, [최종납입년월]에 [유지년월] 값으로 수정
             UPDATE T_TEMP_RPA_SSL_PROCESSED
