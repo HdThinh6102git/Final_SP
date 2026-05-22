@@ -56,10 +56,10 @@ BEGIN
     END;
 
     -- [SET internal logic]
-    IF IN_TARGET_START_DATE IS NULL THEN
+    IF IN_TARGET_END_DATE IS NULL THEN
         SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
     ELSE
-        SET v_target_ym = DATE_FORMAT(IN_TARGET_START_DATE, '%Y%m');
+        SET v_target_ym = DATE_FORMAT(IN_TARGET_END_DATE, '%Y%m');
     END IF;
 
     -- 1. Hardcoded Column Mapping
