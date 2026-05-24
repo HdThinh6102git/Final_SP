@@ -414,7 +414,7 @@ BEGIN
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_DBG_PROCESSED
             SET COLUMN_30 = '년납',
-                COLUMN_31 = DATE_FORMAT(CURDATE(), '%Y%m'),
+                COLUMN_31 = v_target_ym,
                 COLUMN_32 = COLUMN_01;
 
             -- Rule 2: [증권번호] 오름차순 정렬 후 [상태]≠"정상, 철회, 해지"이면 데이터 행삭제
