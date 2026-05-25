@@ -354,24 +354,22 @@ BEGIN
                 
                 -- Rule 4: [계약구분]="공동인수"이면 중복증번의 [공동인수보험료]와 [수정보험료] 값을 각각 합하여 [공동인수보험료],[수정보험료]로 값수정해주고 [보험료]값도 수정한 [공동인수보험료]로 변경해줌
                 DROP TEMPORARY TABLE IF EXISTS tmp_agg_data;
-                CREATE TEMPORARY TABLE tmp_agg_data
-                SELECT
-                    COLUMN_12,
-                    SUM(CAST(REPLACE(IFNULL(COLUMN_29, '0'), ',', '') AS DECIMAL(18,2))) AS s29,
-                    SUM(CAST(REPLACE(IFNULL(COLUMN_24, '0'), ',', '') AS DECIMAL(18,2))) AS s24
-                FROM T_TEMP_RPA_HDG_PROCESSED
-                WHERE TRIM(IFNULL(COLUMN_32, '')) LIKE '%공동인수%'
-                GROUP BY COLUMN_12
-                HAVING COUNT(*) > 1;
 
-                UPDATE T_TEMP_RPA_HDG_PROCESSED t
-                INNER JOIN tmp_agg_data a
-                    ON t.COLUMN_12 = a.COLUMN_12
-                SET
-                    t.COLUMN_29 = CAST(a.s29 AS CHAR),
-                    t.COLUMN_24 = CAST(a.s24 AS CHAR),
-                    t.COLUMN_19 = CAST(a.s29 AS CHAR)
-                WHERE TRIM(IFNULL(t.COLUMN_32, '')) LIKE '%공동인수%';
+                CREATE TEMPORARY TABLE tmp_agg_data
+                SELECT COLUMN_12, SUM(CAST(REPLACE(IFNULL(COLUMN_29,'0'),',','') AS SIGNED)) AS s29, SUM(CAST(REPLACE(IFNULL(COLUMN_24,'0'),',','') AS SIGNED)) AS s24, MIN(SYS_ID) AS mid
+                FROM T_TEMP_RPA_HDG_PROCESSED 
+                WHERE TRIM(IFNULL(COLUMN_32, '')) LIKE '%공동인수%' 
+                GROUP BY COLUMN_12 
+                HAVING COUNT(*)>1;
+                
+                UPDATE T_TEMP_RPA_HDG_PROCESSED t 
+                INNER JOIN tmp_agg_data a 
+                    ON t.SYS_ID = a.mid 
+                SET t.COLUMN_29 = CAST(a.s29 AS CHAR), t.COLUMN_24 = CAST(a.s24 AS CHAR), t.COLUMN_19 = CAST(a.s29 AS CHAR);
+
+                DELETE t FROM T_TEMP_RPA_HDG_PROCESSED t 
+                INNER JOIN tmp_agg_data a ON t.COLUMN_12 = a.COLUMN_12 
+                WHERE t.SYS_ID <> a.mid;
         
             ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
                 -- Rule 1: 맨 마지막열 값 추가(3개)
