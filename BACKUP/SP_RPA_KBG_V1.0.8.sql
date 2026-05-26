@@ -514,9 +514,7 @@ BEGIN
 
             -- Rule 3: [보험시작일]<"해당월"이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
-            WHERE COLUMN_24 IS NOT NULL 
-            AND TRIM(COLUMN_24) <> '' 
-            AND LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) < v_target_ym;
+            WHERE LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) < v_target_ym;
 
             -- Rule 4: 중복 증번 편집
             -- ① 중복 증권번호 중 [구분]="정상,취소"이면 [구분]="취소" 값수정 및 [보험료]="마이너스금액" 데이터 행삭제
