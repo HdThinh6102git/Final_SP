@@ -35,8 +35,9 @@ BEGIN
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Column Mapping
-    IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+    -- 1. Hardcoded Column Mapping for Chubb Life (CDL)
+    IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        -- Mapping for NEW contracts (Columns 01-38 + Target-only 39)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -169,7 +170,8 @@ BEGIN
             'COLUMN_38, ', -- 피보험자 연령(가입당시)
             'COLUMN_39'); -- 납기구분
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+    ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        -- Mapping for EXT contracts (Columns 01-40)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -335,13 +337,13 @@ BEGIN
 
         -- 3. Apply Transformation Logic
         
-        IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             -- Rule 1: 맨 마지막열 값 추가(1개)
             -- ① 항목명 : 납기구분 / 항목값 : 년납
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_39 = '년납';
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             -- Rule 1: [계약상태]=“정상(유지),실효,정상화기간,효력상실”이면 [계약변경일]을 “0000-00-00”으로 수정
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_09 = '0000-00-00'
             WHERE COLUMN_07 IN ('정상(유지)', '실효', '정상화기간', '효력상실');

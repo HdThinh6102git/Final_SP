@@ -53,8 +53,9 @@ BEGIN
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Column Mapping
-    IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+    -- 1. Hardcoded Column Mapping for LINA Life (LNF)
+    IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        -- Mapping for NEW contracts (Columns 01-29 + Target-only 30, 31)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -163,7 +164,8 @@ BEGIN
             'COLUMN_30, ', -- 납기구분
             'COLUMN_31');  -- 납입월
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+    ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        -- Mapping for EXT contracts (Columns 01-44)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -341,7 +343,7 @@ BEGIN
         DEALLOCATE PREPARE stmt;
 
         -- 2.3. Apply transformation rules (NEW / EXT)
-        IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: 맨 마지막열 값 추가(2개)
                ① 항목명I : 납기구분 / 항목값 : 년납
                ② 항목명II : 납입월 / 항목값 : 해당월도(ex.202512)
@@ -351,7 +353,7 @@ BEGIN
             SET COLUMN_30 = '년납',
                 COLUMN_31 = v_target_ym;
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             /* Rule 1: [계약상태]="실효,시효,유지,청약"이면 [소멸일자]에 "0000-00-00"으로 수정 */
             UPDATE T_TEMP_RPA_LNF_PROCESSED
             SET COLUMN_32 = '0000-00-00'

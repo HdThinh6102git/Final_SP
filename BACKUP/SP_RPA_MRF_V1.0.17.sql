@@ -31,7 +31,7 @@ BEGIN
     DECLARE v_row_count       INT          DEFAULT 0;
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'MRF';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
-    DECLARE v_proc_table VARCHAR(100) DEFAULT '';
+    DECLARE v_processed_table VARCHAR(100) DEFAULT '';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
@@ -49,21 +49,12 @@ BEGIN
         SET v_target_ym = DATE_FORMAT(IN_TARGET_END_DATE, '%Y%m');
     END IF;
 
-    -- Table Mapping by Insurance Type
-    IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-        SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
-        SET v_proc_table = 'T_RPA_LONG_TERM_PROCESSED';
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-        SET v_raw_table = 'T_RPA_CAR_RAW';
-        SET v_proc_table = 'T_RPA_CAR_PROCESSED';
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-        SET v_raw_table = 'T_RPA_GENERAL_RAW';
-        SET v_proc_table = 'T_RPA_GENERAL_PROCESSED';
-    END IF;
-
-    -- 1. Column Mapping
+    -- 1. Hardcoded Column Mapping
     IF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-        SET v_raw_cols = ''; SET v_proc_cols = '';
+        SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
+        SET v_processed_table = 'T_RPA_LONG_TERM_PROCESSED';
+        SET v_raw_cols = '';
+        SET v_proc_cols = '';
 
         -- 01-03
         SET v_raw_cols = CONCAT(v_raw_cols,
@@ -196,7 +187,10 @@ BEGIN
             'COLUMN_39');  -- 납입월
 
     ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-        SET v_raw_cols = ''; SET v_proc_cols = '';
+        SET v_raw_table = 'T_RPA_CAR_RAW';
+        SET v_processed_table = 'T_RPA_CAR_PROCESSED';
+        SET v_raw_cols = '';
+        SET v_proc_cols = '';
 
         -- 01-03
         SET v_raw_cols = CONCAT(v_raw_cols,
@@ -331,7 +325,10 @@ BEGIN
             'COLUMN_40');  -- 보험기간 시작일
 
     ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-        SET v_raw_cols = ''; SET v_proc_cols = '';
+        SET v_raw_table = 'T_RPA_GENERAL_RAW';
+        SET v_processed_table = 'T_RPA_GENERAL_PROCESSED';
+        SET v_raw_cols = '';
+        SET v_proc_cols = '';
 
         -- 01-03
         SET v_raw_cols = CONCAT(v_raw_cols,
@@ -466,7 +463,10 @@ BEGIN
             'COLUMN_40');  -- 보험기간 시작일
 
     ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
-        SET v_raw_cols = ''; SET v_proc_cols = '';
+        SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
+        SET v_processed_table = 'T_RPA_LONG_TERM_PROCESSED';
+        SET v_raw_cols = '';
+        SET v_proc_cols = '';
 
         -- 01-03
         SET v_raw_cols = CONCAT(v_raw_cols,
@@ -658,9 +658,9 @@ BEGIN
     END IF;
 
     -- 2. Execute if column mapping is valid
-    IF v_raw_cols != '' AND v_proc_cols != '' AND v_proc_table != '' THEN
+    IF v_raw_cols != '' AND v_proc_cols != '' AND v_processed_table != '' THEN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_MRF_PROCESSED;
-        SET @sql_create = CONCAT('CREATE TEMPORARY TABLE T_TEMP_RPA_MRF_PROCESSED LIKE ', v_proc_table);
+        SET @sql_create = CONCAT('CREATE TEMPORARY TABLE T_TEMP_RPA_MRF_PROCESSED LIKE ', v_processed_table);
         PREPARE stmt_create FROM @sql_create;
         EXECUTE stmt_create;
         DEALLOCATE PREPARE stmt_create;
@@ -677,7 +677,7 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
 
-        IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             -- ① 항목명I : 납기구분 / 항목값 : 년납
             -- ② 항목명II : 납입월 / 항목값 : 해당월
@@ -727,7 +727,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
             WHERE LEFT(REPLACE(IFNULL(COLUMN_32, ''), '-', ''), 6) <> v_target_ym;
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_38 = '년납',
@@ -827,7 +827,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
             WHERE COLUMN_07 = '배서';
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
             -- Rule 1: 맨 마지막열 값 추가(2개)
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_38 = '년납',
@@ -932,7 +932,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_MRF_PROCESSED
             WHERE COLUMN_07 = '배서';
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' AND UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
             -- Rule 1: [계약상태상세명]=“정상,해지,해지불능”이면 [소멸실효일자]를 “0000-00-00”으로 값수정
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_54 = '0000-00-00'
@@ -979,14 +979,14 @@ BEGIN
               AND COLUMN_08 <= DATE_FORMAT(
                     DATE_SUB(
                         STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
-                        INTERVAL 38 MONTH
+                        INTERVAL 38 MONT    H
                     ),
                     '%Y%m'
                 );
         END IF;
 
         SET @sql_insert = CONCAT(
-            'INSERT INTO ', v_proc_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
+            'INSERT INTO ', v_processed_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
             'SELECT SYS_ID, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ' ',
             'FROM T_TEMP_RPA_MRF_PROCESSED ORDER BY SORT_ORDER_NO ASC;'
         );

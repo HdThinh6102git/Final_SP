@@ -47,13 +47,13 @@ BEGIN
         SET v_target_ym = DATE_FORMAT(IN_TARGET_END_DATE, '%Y%m');
     END IF;
 
-     -- Table Mapping by Insurance Type
+    -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
         SET v_raw_table = 'T_RPA_LIFE_RAW';
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Hardcoded Column Mapping
+    -- 1. Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 

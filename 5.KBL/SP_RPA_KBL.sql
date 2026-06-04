@@ -53,9 +53,8 @@ BEGIN
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Hardcoded Column Mapping
+    -- 1. Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
-        -- Mapping for NEW contracts (Columns 01-34 + Target-only 35)
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -346,8 +345,7 @@ BEGIN
             UPDATE T_TEMP_RPA_KBL_PROCESSED
             SET COLUMN_35 = '년납';
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LIF'
-           AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        ELSEIF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
 
             -- Rule 1: 계약상태변경일 편집
             UPDATE T_TEMP_RPA_KBL_PROCESSED

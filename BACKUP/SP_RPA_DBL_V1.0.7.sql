@@ -47,14 +47,15 @@ BEGIN
         SET v_target_ym = DATE_FORMAT(IN_TARGET_END_DATE, '%Y%m');
     END IF;
 
-    -- Table Mapping by Insurance Type
+     -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' THEN
         SET v_raw_table = 'T_RPA_LIFE_RAW';
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Column Mapping
+    -- 1. Hardcoded Column Mapping
     IF UPPER(IN_INSURANCE_TYPE) = 'LIF' AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        -- Mapping for EXT contracts (Columns 01-30)
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -180,7 +181,7 @@ BEGIN
         DEALLOCATE PREPARE stmt;
 
         -- 2.3. Apply transformation rules (EXT)
-        IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
 
             /* Rule 2: [상태]=실효,연체,완납,정상 & [UV종납년월]=값있음 이면
                ① [종납년월]값을 [UV종납년월]로 수정

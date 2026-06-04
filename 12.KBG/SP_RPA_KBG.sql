@@ -31,7 +31,7 @@ BEGIN
     DECLARE v_row_count       INT          DEFAULT 0;
     DECLARE v_company_code    VARCHAR(10)  DEFAULT 'KBG';
     DECLARE v_raw_table       VARCHAR(100) DEFAULT '';
-    DECLARE v_processed_table VARCHAR(100) DEFAULT '';
+    DECLARE v_proc_table VARCHAR(100) DEFAULT '';
     DECLARE v_target_ym    VARCHAR(6)   DEFAULT '';
 
     -- [DECLARE handler]
@@ -51,12 +51,20 @@ BEGIN
         SET v_target_ym = DATE_FORMAT(IN_TARGET_END_DATE, '%Y%m');
     END IF;
 
-    -- 1. Hardcoded Column Mapping
+    -- Table Mapping by Insurance Type
     IF UPPER(IN_INSURANCE_TYPE) = 'LTR' THEN
         SET v_raw_table = 'T_RPA_LONG_TERM_RAW';
-        SET v_processed_table = 'T_RPA_LONG_TERM_PROCESSED';
+        SET v_proc_table = 'T_RPA_LONG_TERM_PROCESSED';
+    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
+        SET v_raw_table = 'T_RPA_CAR_RAW';
+        SET v_proc_table = 'T_RPA_CAR_PROCESSED';
+    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
+        SET v_raw_table = 'T_RPA_GENERAL_RAW';
+        SET v_proc_table = 'T_RPA_GENERAL_PROCESSED';
+    END IF;
 
-        -- Mapping for LTR contracts (Columns 01-28 + Target-only 29-31)
+    -- 1. Column Mapping
+    IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -165,11 +173,7 @@ BEGIN
         SET v_proc_cols = CONCAT(v_proc_cols,
             'COLUMN_31');  -- 납입일
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' THEN
-        SET v_raw_table = 'T_RPA_CAR_RAW';
-        SET v_processed_table = 'T_RPA_CAR_PROCESSED';
-
-        -- Mapping for CAR contracts (Columns 01-25 + Target-only 26-28)
+    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -268,11 +272,7 @@ BEGIN
         SET v_proc_cols = CONCAT(v_proc_cols,
             'COLUMN_28');  -- 납입주기
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' THEN
-        SET v_raw_table = 'T_RPA_GENERAL_RAW';
-        SET v_processed_table = 'T_RPA_GENERAL_PROCESSED';
-
-        -- Mapping for GEN contracts (Columns 01-20 + Target-only 21-23)
+    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -359,7 +359,7 @@ BEGIN
 
         -- 2.1. Create temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_KBG_PROCESSED;
-        SET @sql_create = CONCAT('CREATE TEMPORARY TABLE T_TEMP_RPA_KBG_PROCESSED LIKE ', v_processed_table);
+        SET @sql_create = CONCAT('CREATE TEMPORARY TABLE T_TEMP_RPA_KBG_PROCESSED LIKE ', v_proc_table);
         PREPARE stmt_create FROM @sql_create;
         EXECUTE stmt_create;
         DEALLOCATE PREPARE stmt_create;
@@ -371,8 +371,7 @@ BEGIN
             'FROM ', v_raw_table, ' ',
             'WHERE COMPANY_CODE = ''', v_company_code, ''' ',
             '  AND BATCH_ID = ''', IN_BATCH_ID, ''' ',
-            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''') ',
-            '  AND COLUMN_08 <> ''증권번호'';'
+            '  AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
         );
         PREPARE stmt FROM @sql_query;
         EXECUTE stmt;
@@ -630,7 +629,7 @@ BEGIN
 
         -- 2.4. Insert transformed data into processed table
         SET @sql_insert = CONCAT(
-            'INSERT INTO ', v_processed_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
+            'INSERT INTO ', v_proc_table, ' (SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, CREATED_DT, COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ') ',
             'SELECT SYS_ID, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), COMPANY_CODE, BATCH_ID, CONTRACT_TYPE, EXCEL_ROW_INDEX, SORT_ORDER_NO, ', v_proc_cols, ' ',
             'FROM T_TEMP_RPA_KBG_PROCESSED ORDER BY SORT_ORDER_NO ASC;'
         );

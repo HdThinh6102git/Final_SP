@@ -35,8 +35,9 @@ BEGIN
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Column Mapping
-    IF UPPER(IN_CONTRACT_TYPE) = 'NEW' AND UPPER(IN_INSURANCE_TYPE) = "LIF" THEN
+    -- 1. Hardcoded Column Mapping for Samsung Life (SSL)
+    IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        -- Mapping for NEW contracts (Columns 01-28 + Target-only 29)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -261,7 +262,7 @@ BEGIN
         -- 3. Apply Transformation Logic
         
         -- [NEW Logic]
-        IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             -- Rule 1: 맨 마지막열 값 추가(1개)
             -- ① 항목명 : 납기구분 / 항목값 : 년납
             -- ※ 전체 행에 반영
@@ -269,7 +270,7 @@ BEGIN
         END IF;
 
         -- [EXT Logic]
-        IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             /*
                 1. 증권번호 편집
                 ① 증번 숫자형식으로 변경 후 글자수 체크(len함수)
