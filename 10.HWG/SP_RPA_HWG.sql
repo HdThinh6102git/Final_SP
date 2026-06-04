@@ -60,7 +60,7 @@ BEGIN
     END IF;
 
     -- 1. Column Mapping
-    IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(CONTRACT_TYPE) = 'NEW' THEN
+    IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -193,7 +193,7 @@ BEGIN
             'COLUMN_38, ', -- 납입월
             'COLUMN_39');  -- 납입일
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(CONTRACT_TYPE) = 'NEW' THEN
+    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03
@@ -314,7 +314,7 @@ BEGIN
             'COLUMN_34, ', -- 납기
             'COLUMN_35');  -- 납입주기
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(CONTRACT_TYPE) = 'NEW' THEN
+    ELSEIF UPPER(IN_INSURANCE_TYPE) = 'GEN' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
 
         -- 01-03

@@ -222,10 +222,10 @@ BEGIN
         -- 52-53
         SET v_raw_cols = CONCAT(v_raw_cols, 
             'COLUMN_52, ', -- 30세만기담보보험료
-            'COLUMN_53'); -- 출생후보험료
+            'COLUMN_53, '); -- 출생후보험료
         SET v_proc_cols = CONCAT(v_proc_cols, 
             'COLUMN_52, ', -- 30세만기담보보험료
-            'COLUMN_53'); -- 30세만기담보보험료, 출생후보험료
+            'COLUMN_53, '); -- 30세만기담보보험료, 출생후보험료
 
         -- 54-56
         SET v_raw_cols = CONCAT(v_raw_cols,
@@ -413,7 +413,7 @@ BEGIN
         -- 52-53
         SET v_raw_cols = CONCAT(v_raw_cols, 
             'COLUMN_52, ', -- 30세만기담보보험료
-            'COLUMN_53');  -- 출생후보험료
+            'COLUMN_53, ');  -- 출생후보험료
         SET v_proc_cols = CONCAT(v_proc_cols, 
             'COLUMN_52, ', -- 30세만기담보보험료
             'COLUMN_53, ');  -- 출생후보험료
@@ -604,10 +604,10 @@ BEGIN
         -- 52-53
         SET v_raw_cols = CONCAT(v_raw_cols, 
             'COLUMN_52, ', -- 30세만기담보보험료
-            'COLUMN_53');  -- 출생후보험료
+            'COLUMN_53, ');  -- 출생후보험료
         SET v_proc_cols = CONCAT(v_proc_cols, 
             'COLUMN_52, ', -- 30세만기담보보험료
-            'COLUMN_53');  -- 출생후보험료
+            'COLUMN_53, ');  -- 출생후보험료
 
         -- 54-57
         SET v_raw_cols = CONCAT(v_raw_cols,
