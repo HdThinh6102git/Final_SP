@@ -500,7 +500,7 @@ BEGIN
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET COLUMN_26 = '년납',
                 COLUMN_27 = v_target_ym,
-                COLUMN_28 = "일시납";
+                COLUMN_28 = COLUMN_10;
 
             -- Rule 2: [증권번호] 오름차순 정렬 후 [구분]="환추징"이면 데이터 행삭제
             SET @seq := 0;
