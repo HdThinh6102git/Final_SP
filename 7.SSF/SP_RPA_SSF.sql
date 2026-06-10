@@ -1101,7 +1101,12 @@ BEGIN
 
             /* Rule 2: [계약상태]="배서"면 데이터 행삭제 */
             DELETE FROM T_TEMP_RPA_SSF_PROCESSED
-            WHERE COLUMN_22 = '배서';
+            WHERE COLUMN_22 = '배서'
+            AND (
+                    COLUMN_24 IS NULL
+                    OR TRIM(COLUMN_24) = ''
+                    OR LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) <> v_target_ym
+                );
 
             /* Rule 3: [계약상태]="공란"이면 "신계약"으로 수정 */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
