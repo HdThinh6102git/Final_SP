@@ -427,12 +427,13 @@ BEGIN
             WHERE t.COLUMN_08 IN (SELECT COLUMN_08 FROM tmp_kbg_dup_case)
               AND t.SORT_ORDER_NO <> k.keep_sort_order_no;
 
-            -- ② 중복 증번번호 중 [상품명]="KB 금쪽같은 자녀보험"이면 [보험료], 를 합산하여 한건으로 값수정([건수]="0"인 데이터 행삭제)
+            -- ② 중복 증번번호 중 [상품명]="KB 금쪽같은 자녀보험"이면 [보험료],[수정보험료]를 합산하여 한건으로 값수정([건수]="0"인 데이터 행삭제)
             DROP TEMPORARY TABLE IF EXISTS tmp_kbg_agg_data;
             CREATE TEMPORARY TABLE tmp_kbg_agg_data
             SELECT
                 a.COLUMN_08,
                 SUM(CAST(REPLACE(IFNULL(a.COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS sum_20,
+                SUM(CAST(REPLACE(IFNULL(a.COLUMN_22, '0'), ',', '') AS DECIMAL(18,0))) AS sum_22,
                 COALESCE(
                     MIN(CASE WHEN CAST(IFNULL(a.COLUMN_19, '0') AS SIGNED) <> 0 THEN a.SORT_ORDER_NO END),
                     MIN(a.SORT_ORDER_NO)
@@ -446,7 +447,8 @@ BEGIN
             INNER JOIN tmp_kbg_agg_data a
                     ON t.COLUMN_08 = a.COLUMN_08
                 AND t.SORT_ORDER_NO = a.keep_sort_order_no
-            SET t.COLUMN_20 = CAST(a.sum_20 AS CHAR);
+            SET t.COLUMN_20 = CAST(a.sum_20 AS CHAR),
+                t.COLUMN_22 = CAST(a.sum_22 AS CHAR);
 
             DELETE t
             FROM T_TEMP_RPA_KBG_PROCESSED t
