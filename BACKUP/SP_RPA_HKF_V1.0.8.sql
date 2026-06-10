@@ -413,7 +413,7 @@ BEGIN
                 Rule 2: 중복 증번 편집
                 ① 맨아래 계 부분의 데이터 행2개 삭제
                 ② [계약번호] 오름차순 정렬
-                ③ 중복 계약번호 중 [상태]=각각"정상,철회/인수거부"이면 [상태]="철회/인수거부" 행은 삭제, [상태]="정상" ->"인수거부" 계약상태값 변경
+                ③ 중복 계약번호 중 [상태]=각각"정상,철회/인수거부"이면 [상태]="정상" 데이터 행삭제
                 ④ [영수보험료],[수정보험료]="마이너스 금액"이면 "플러스 금액"으로 값수정
             */
             -- Rule 2.1: 맨아래 계 부분의 데이터 행2개 삭제
@@ -431,27 +431,39 @@ BEGIN
             -- Rule 2.3: 중복 계약번호 중 [상태]=각각"정상,철회/인수거부"이면 [상태]="정상" 데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_chulhoe_hkf;
             CREATE TEMPORARY TABLE tmp_dup_chulhoe_hkf (seq_no VARCHAR(150));
-            
             INSERT INTO tmp_dup_chulhoe_hkf (seq_no)
-            SELECT COLUMN_04 
-            FROM T_TEMP_RPA_HKF_PROCESSED 
-            GROUP BY COLUMN_04
+            SELECT COLUMN_04 FROM T_TEMP_RPA_HKF_PROCESSED GROUP BY COLUMN_04
             HAVING SUM(COLUMN_11 IN ('철회/인수거부', '철회', '인수거부')) > 0 
-                AND SUM(COLUMN_11 = '정상') > 0;
+            AND SUM(COLUMN_11 = '정상') > 0;
 
-            DELETE t
-            FROM T_TEMP_RPA_HKF_PROCESSED t 
-            INNER JOIN tmp_dup_chulhoe_hkf d
-                ON t.COLUMN_04 = d.seq_no
-            WHERE t.COLUMN_11 IN ('철회/인수거부', '철회', '인수거부');
-
-            UPDATE T_TEMP_RPA_HKF_PROCESSED t
-            INNER JOIN tmp_dup_chulhoe_hkf d
-                    ON t.COLUMN_04 = d.seq_no
-            SET t.COLUMN_11 = '인수거부'
+            DELETE t FROM T_TEMP_RPA_HKF_PROCESSED t 
+            INNER JOIN tmp_dup_chulhoe_hkf d ON t.COLUMN_04 = d.seq_no 
             WHERE t.COLUMN_11 = '정상';
 
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_chulhoe_hkf;
+
+            -- Rule 2.4: [영수보험료],[수정보험료]="마이너스 금액"이면 "플러스 금액"으로 값수정
+            UPDATE T_TEMP_RPA_HKF_PROCESSED 
+            SET 
+                COLUMN_14 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_14,'0'), ',', '') AS SIGNED)) AS CHAR) 
+            WHERE 
+                REPLACE(IFNULL(COLUMN_14, '0'), ',', '')
+                REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+                AND CAST(
+                    REPLACE(IFNULL(COLUMN_14, '0'), ',', '')
+                    AS DECIMAL(15,2)
+                ) < 0;
+                
+            UPDATE T_TEMP_RPA_HKF_PROCESSED 
+            SET 
+                COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22,'0'), ',', '') AS SIGNED)) AS CHAR) 
+            WHERE 
+                REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
+                REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
+            AND CAST(
+                    REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
+                    AS DECIMAL(15,2)
+                ) < 0;
 
             /* 
                 Rule 3: [계약일자]≠"해당월"면 데이터 행삭제 
