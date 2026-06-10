@@ -1017,9 +1017,10 @@ BEGIN
             WHERE COLUMN_22 IS NULL OR COLUMN_22 = '';
 
             /* Rule 4: 계약번호 중복 편집
-               ① 계약번호 오름차순 정렬
-               ② 중복 계약번호 중 [계약상태]=모두 "배서"면 해당 데이터들 행삭제
-               ③ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
+                ① 계약번호 오름차순 정렬
+                ② 중복 계약번호 중 [계약상태]=모두 "배서"면 해당 데이터들 행삭제
+                ③ 중복 계약번호의 중복 데이터 중 계약상태가 "신계약"과 "배서"로 각각 존재하며, 신계약 보험료와 배서 보험료의 합계가 0인 경우, "신계약"의 계약상태를 "취소"로 변경한다
+                ④ 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
             */
 
             -- Rule 4①: 계약번호 오름차순 정렬
@@ -1075,7 +1076,10 @@ BEGIN
             FROM T_TEMP_RPA_SSF_PROCESSED t
             INNER JOIN tmp_mix_bseo d
                     ON t.COLUMN_01 = d.COLUMN_01
-            WHERE t.COLUMN_22 = '배서';
+            WHERE t.COLUMN_22 = '배서'
+            AND d.sum_premium <> 0;
+
+            DROP TEMPORARY TABLE IF EXISTS tmp_mix_bseo;
 
             /* Rule 5: [보험료]="마이너스"이면 "플러스"값으로 수정 */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
