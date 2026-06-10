@@ -462,9 +462,10 @@ BEGIN
             SET COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS SIGNED)) AS CHAR)
             WHERE REPLACE(IFNULL(COLUMN_20, '0'), ',', '') REGEXP '^-[0-9]+';
 
-            -- Rule 6: [책임개시일]≠해당월 면 데이터 행삭제
+            -- Rule 6: [책임개시일]≠해당월 & [상품명]≠실손이면 데이터 행삭제
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
-            WHERE LEFT(REPLACE(REPLACE(COLUMN_03, '-', ''), '.', ''), 6) <> v_target_ym;
+            WHERE LEFT(REPLACE(REPLACE(COLUMN_03, '-', ''), '.', ''), 6) <> v_target_ym
+            AND COLUMN_12 NOT LIKE '%실손%';
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
