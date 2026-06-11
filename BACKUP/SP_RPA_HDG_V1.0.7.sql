@@ -682,10 +682,8 @@ BEGIN
                         AS DECIMAL(15,2)
                     ) < 0;
                 
-            -- [Rule 4] [개시일]≠해당월 & [보종명]≠실손이면 데이터 행삭제
-            DELETE FROM T_TEMP_RPA_HDG_PROCESSED
-            WHERE LEFT(REPLACE(COLUMN_03, '-', ''), 6) <> v_target_ym        
-            AND COLUMN_13 NOT LIKE '%실손%';
+            -- [Rule 4] [개시일]!=해당월 행 삭제
+            DELETE FROM T_TEMP_RPA_HDG_PROCESSED WHERE LEFT(REPLACE(COLUMN_03, '-', ''), 6) <> v_target_ym;        
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* 1. 맨 마지막열 값 추가(3개)
