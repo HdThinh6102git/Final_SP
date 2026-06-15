@@ -621,7 +621,7 @@ BEGIN
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE (COLUMN_14 = '1' OR CAST(IFNULL(COLUMN_14, '0') AS SIGNED) = 1)
               AND IFNULL(COLUMN_17, '') NOT IN ('월납', '일시납')
-              AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) < v_target_ym;
+              AND LEFT(REPLACE(REPLACE(COLUMN_19, '-', ''), '.', ''), 6) <> v_target_ym;
 
         END IF;
 
