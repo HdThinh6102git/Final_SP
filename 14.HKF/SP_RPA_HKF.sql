@@ -451,29 +451,6 @@ BEGIN
             SET t.COLUMN_11 = '인수거부'
             WHERE t.COLUMN_11 = '정상';
 
-            -- Rule 2.4 (additional) Delete when [영수보험료] or [수정보험료] is negative
-            DELETE t
-            FROM
-                T_TEMP_RPA_HKF_PROCESSED t
-                INNER JOIN tmp_dup_chulhoe_hkf d 
-                    ON t.COLUMN_04 = d.seq_no
-            WHERE
-                t.COLUMN_11 IN ('철회/인수거부', '철회', '인수거부')
-                AND (
-                    (
-                        REPLACE (IFNULL (t.COLUMN_14, '0'), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        AND CAST(
-                            REPLACE (IFNULL (t.COLUMN_14, '0'), ',', '') AS DECIMAL(15, 2)
-                        ) < 0
-                    )
-                    OR (
-                        REPLACE (IFNULL (t.COLUMN_22, '0'), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        AND CAST(
-                            REPLACE (IFNULL (t.COLUMN_22, '0'), ',', '') AS DECIMAL(15, 2)
-                        ) < 0
-                    )
-                );
-
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_chulhoe_hkf;
 
             /* 
