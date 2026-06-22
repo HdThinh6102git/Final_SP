@@ -1071,11 +1071,13 @@ BEGIN
             AND d.sum_premium = 0;
 
             -- Rule 4④: 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
+            
             DELETE t
             FROM T_TEMP_RPA_SSF_PROCESSED t
             INNER JOIN tmp_mix_bseo d
                     ON t.COLUMN_01 = d.COLUMN_01
-            WHERE t.COLUMN_22 = '배서';
+            WHERE t.COLUMN_22 = '배서'
+            AND d.sum_premium <> 0;
 
             DROP TEMPORARY TABLE IF EXISTS tmp_mix_bseo;
 
