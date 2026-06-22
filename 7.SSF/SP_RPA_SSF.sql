@@ -1066,7 +1066,7 @@ BEGIN
             UPDATE T_TEMP_RPA_SSF_PROCESSED t
             INNER JOIN tmp_mix_bseo d
                     ON t.COLUMN_01 = d.COLUMN_01
-            SET t.COLUMN_22 = '배서'
+            SET t.COLUMN_22 = '취소'
             WHERE t.COLUMN_22 = '신계약'
             AND d.sum_premium = 0;
 
@@ -1076,6 +1076,7 @@ BEGIN
             INNER JOIN tmp_mix_bseo d
                     ON t.COLUMN_01 = d.COLUMN_01
             WHERE t.COLUMN_22 = '배서';
+
 
             DROP TEMPORARY TABLE IF EXISTS tmp_mix_bseo;
 
