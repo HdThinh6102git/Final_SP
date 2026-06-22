@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /*
  * SP_RPA_SSF
  * Description : Process Samsung Fire insurance data
@@ -17,6 +18,8 @@
  *      2.5. Drop temp table
  */
 
+=======
+>>>>>>> 06853bf0471857f1c9ad88f4cef801a1f5824c20
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_SSF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
@@ -1071,11 +1074,20 @@ BEGIN
             AND d.sum_premium = 0;
 
             -- Rule 4④: 중복 계약번호 중 [계약상태]=각각"신계약,배서"면 "배서" 데이터 행삭제
+<<<<<<< HEAD
+=======
+            
+>>>>>>> 06853bf0471857f1c9ad88f4cef801a1f5824c20
             DELETE t
             FROM T_TEMP_RPA_SSF_PROCESSED t
             INNER JOIN tmp_mix_bseo d
                     ON t.COLUMN_01 = d.COLUMN_01
+<<<<<<< HEAD
             WHERE t.COLUMN_22 = '배서';
+=======
+            WHERE t.COLUMN_22 = '배서'
+            AND d.sum_premium <> 0;
+>>>>>>> 06853bf0471857f1c9ad88f4cef801a1f5824c20
 
             DROP TEMPORARY TABLE IF EXISTS tmp_mix_bseo;
 
