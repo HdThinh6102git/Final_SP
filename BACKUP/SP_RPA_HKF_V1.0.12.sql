@@ -439,13 +439,11 @@ BEGIN
             HAVING SUM(COLUMN_11 IN ('철회/인수거부', '철회', '인수거부')) > 0 
                 AND SUM(COLUMN_11 = '정상') > 0;
 
-            /* Rule delete the record where [상태] = "철회" or = "인수거부".
             DELETE t
             FROM T_TEMP_RPA_HKF_PROCESSED t 
             INNER JOIN tmp_dup_chulhoe_hkf d
-                 ON t.COLUMN_04 = d.seq_no
+                ON t.COLUMN_04 = d.seq_no
             WHERE t.COLUMN_11 IN ('철회/인수거부', '철회', '인수거부');
-            */
 
             UPDATE T_TEMP_RPA_HKF_PROCESSED t
             INNER JOIN tmp_dup_chulhoe_hkf d
