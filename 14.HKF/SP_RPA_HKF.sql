@@ -472,7 +472,7 @@ BEGIN
                 sum_modify_premium
             )
             SELECT
-                COLUMN_04,
+                COLUMN_04 AS seq_no,
                 SUM(CAST(REPLACE(IFNULL(COLUMN_14, '0'), ',', '') AS DECIMAL(20,2))) AS sum_receipt_premium,
                 SUM(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(20,2))) AS sum_modify_premium
             FROM T_TEMP_RPA_HKF_PROCESSED
