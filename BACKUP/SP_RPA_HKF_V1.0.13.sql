@@ -23,7 +23,6 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sorted_hkf;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_chulhoe_hkf;
         DROP TEMPORARY TABLE IF EXISTS tmp_dup_gen_hkf;
-        DROP TEMPORARY TABLE IF EXISTS tmp_dup_refuse_zero_hkf;
     END;
 
     -- [SET internal logic]
@@ -453,54 +452,6 @@ BEGIN
             WHERE t.COLUMN_11 = '정상';
 
             DROP TEMPORARY TABLE IF EXISTS tmp_dup_chulhoe_hkf;
-
-            /* 
-            Rule 2.4:
-            - Duplicate [계약번호] 중 [상태]='인수거부'가 존재하고,
-            - SUM([영수보험료])=0 또는 SUM([수정보험료])=0 이면 해당 마이너스 행 삭제
-            */
-            DROP TEMPORARY TABLE IF EXISTS tmp_dup_refuse_zero_hkf;
-            CREATE TEMPORARY TABLE tmp_dup_refuse_zero_hkf (
-                seq_no VARCHAR(150),
-                sum_receipt_premium DECIMAL(20,2),
-                sum_modify_premium DECIMAL(20,2)
-            );
-
-            INSERT INTO tmp_dup_refuse_zero_hkf (
-                seq_no,
-                sum_receipt_premium,
-                sum_modify_premium
-            )
-            SELECT
-                COLUMN_04,
-                SUM(CAST(REPLACE(IFNULL(COLUMN_14, '0'), ',', '') AS DECIMAL(20,2))),
-                SUM(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(20,2)))
-            FROM T_TEMP_RPA_HKF_PROCESSED
-            GROUP BY COLUMN_04
-            HAVING COUNT(*) > 1
-               AND SUM(COLUMN_11 = '인수거부') > 0
-               AND (
-                    sum_receipt_premium = 0
-                    OR sum_modify_premium = 0
-               );
-
-            DELETE t
-            FROM T_TEMP_RPA_HKF_PROCESSED t
-            INNER JOIN tmp_dup_refuse_zero_hkf d
-                    ON t.COLUMN_04 = d.seq_no
-            WHERE (
-                    (
-                        d.sum_receipt_premium = 0
-                        AND CAST(REPLACE(IFNULL(t.COLUMN_14, '0'), ',', '') AS DECIMAL(20,2)) < 0
-                    )
-                    OR
-                    (
-                        d.sum_modify_premium = 0
-                        AND CAST(REPLACE(IFNULL(t.COLUMN_22, '0'), ',', '') AS DECIMAL(20,2)) < 0
-                    )
-              );
-
-            DROP TEMPORARY TABLE IF EXISTS tmp_dup_refuse_zero_hkf;
 
             /* 
                 Rule 3: [계약일자]≠"해당월"면 데이터 행삭제 
