@@ -1,22 +1,3 @@
-/*
- * SP_RPA_SSF
- * Description : Process Samsung Fire insurance data
- * Parameters  :
- *   IN_BATCH_ID       : Batch ID to process
- *   IN_INSURANCE_TYPE : Insurance type (LTR / CAR / GEN)
- *   IN_CONTRACT_TYPE  : Contract type (NEW only)
- *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
- *   IN_TARGET_END_DATE      : Target end date for processing (YYYY-MM-DD)
- * Steps       :
- *   1. Hardcoded column mapping by insurance type (LTR / CAR / GEN)
- *   2. Execute if column mapping is valid
- *      2.1. Create temp table
- *      2.2. Insert raw data into temp table
- *      2.3. Apply transformation rules (LTR / CAR / GEN)
- *      2.4. Insert transformed data into processed table
- *      2.5. Drop temp table
- */
-
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_SSF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
@@ -853,21 +834,8 @@ BEGIN
             CREATE TEMPORARY TABLE tmp_tae_sum
             SELECT
                 COLUMN_01,
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') AS DECIMAL(20,3))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_08,
-
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') AS DECIMAL(20,3))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_11
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_08,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_11
             FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
             GROUP BY COLUMN_01;
@@ -905,10 +873,8 @@ BEGIN
             -- =====================================================
             -- Case 2: Duplicate contracts that DO NOT have '태아'
             -- and have both blank + non-blank 피보험자명
-            -- Keep 1 non-blank row
-            -- Sum all duplicated rows into that row
-            -- Delete blank rows only
-            -- If all rows are non-blank, do nothing
+            -- Keep 1 non-blank row only
+            -- Do NOT sum COLUMN_08 / COLUMN_11
             -- =====================================================
             DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
             CREATE TEMPORARY TABLE tmp_no_tae_mix
@@ -950,7 +916,6 @@ BEGIN
             DROP TEMPORARY TABLE IF EXISTS tmp_tae_sum;
             DROP TEMPORARY TABLE IF EXISTS tmp_tae_keep;
             DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
-            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_sum;
             DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
 
             /* Rule 4: 상품명 원수사 원부확인하여 값수정
@@ -1113,7 +1078,6 @@ BEGIN
                     OR LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) <> v_target_ym
                 );
 
-
             /* Rule 3: [계약상태]="공란"이면 "신계약"으로 수정 */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
             SET COLUMN_22 = '신계약'
@@ -1187,7 +1151,7 @@ BEGIN
 
         SET v_row_count = ROW_COUNT();
 
-
+        -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_SSF_PROCESSED;
 
     END IF;
