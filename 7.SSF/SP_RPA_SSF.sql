@@ -856,7 +856,7 @@ BEGIN
                 CAST(SUM(
                     CASE
                         WHEN REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') AS DECIMAL(30,6))
+                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') AS DECIMAL(20,3))
                         ELSE 0
                     END
                 ) AS CHAR) AS sum_08,
@@ -864,11 +864,10 @@ BEGIN
                 CAST(SUM(
                     CASE
                         WHEN REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') AS DECIMAL(30,6))
+                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') AS DECIMAL(20,3))
                         ELSE 0
                     END
                 ) AS CHAR) AS sum_11
-                
             FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
             GROUP BY COLUMN_01;
@@ -917,33 +916,9 @@ BEGIN
             FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
             GROUP BY COLUMN_01
-            HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) = 0
-            AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '' THEN 1 ELSE 0 END) > 0
-            AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN 1 ELSE 0 END) > 0;
-
-            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_sum;
-            CREATE TEMPORARY TABLE tmp_no_tae_sum
-            SELECT
-                COLUMN_01,
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') AS DECIMAL(30,6))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_08,
-
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') AS DECIMAL(30,6))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_11
-
-            FROM T_TEMP_RPA_SSF_PROCESSED
-            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
-            GROUP BY COLUMN_01;
+                HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) = 0
+                AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '' THEN 1 ELSE 0 END) > 0
+                AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN 1 ELSE 0 END) > 0;
 
             DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
             CREATE TEMPORARY TABLE tmp_no_tae_keep
@@ -954,21 +929,14 @@ BEGIN
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
             GROUP BY COLUMN_01;
 
-            UPDATE T_TEMP_RPA_SSF_PROCESSED t
-            INNER JOIN tmp_no_tae_keep k
-                ON t.COLUMN_01 = k.COLUMN_01
-            AND t.EXCEL_ROW_INDEX = k.keep_row
-            INNER JOIN tmp_no_tae_sum s
-                ON t.COLUMN_01 = s.COLUMN_01
-            SET
-                t.COLUMN_08 = s.sum_08,
-                t.COLUMN_11 = s.sum_11;
-
             DELETE t
             FROM T_TEMP_RPA_SSF_PROCESSED t
             INNER JOIN tmp_no_tae_mix d
                 ON t.COLUMN_01 = d.COLUMN_01
-            WHERE TRIM(IFNULL(t.COLUMN_05, '')) = '';
+            LEFT JOIN tmp_no_tae_keep k
+                ON t.COLUMN_01 = k.COLUMN_01
+            AND t.EXCEL_ROW_INDEX = k.keep_row
+            WHERE k.keep_row IS NULL;
 
             -- Re-sequence after deletion
             SET @seq := 0;
