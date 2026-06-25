@@ -834,8 +834,8 @@ BEGIN
             CREATE TEMPORARY TABLE tmp_tae_sum
             SELECT
                 COLUMN_01,
-                FORMAT(CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR), 0) AS sum_08,
-                FORMAT(CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR), 0) AS sum_11
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_08,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_11
             FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
             GROUP BY COLUMN_01;
