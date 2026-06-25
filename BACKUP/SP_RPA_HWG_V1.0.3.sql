@@ -38,7 +38,6 @@ BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HWG_PROCESSED;
-        DROP TEMPORARY TABLE IF EXISTS tmp_hwg_keep;
     END;
 
     -- [SET internal logic]
@@ -444,32 +443,11 @@ BEGIN
                 COLUMN_38 = v_target_ym,
                 COLUMN_39 = COLUMN_12;
 
-            /*
-            Rule 2: Duplicate [증권번호] and at least [월납환산보험료] is negative and positive 
-            -> Keep first positive row only 
-            */
-            DROP TEMPORARY TABLE IF EXISTS tmp_hwg_keep;
-
-            CREATE TEMPORARY TABLE tmp_hwg_keep AS
-            SELECT
-                COLUMN_08,
-                MIN(CASE
-                    WHEN CAST(REPLACE(COLUMN_18, ',', '') AS DECIMAL(18,3)) > 0
-                    THEN EXCEL_ROW_INDEX
-                END) AS keep_row
-            FROM T_TEMP_RPA_HWG_PROCESSED
-            GROUP BY COLUMN_08
-            HAVING COUNT(*) > 1
-            AND SUM(CAST(REPLACE(COLUMN_18, ',', '') AS DECIMAL(18,3)) > 0) >= 1
-            AND SUM(CAST(REPLACE(COLUMN_18, ',', '') AS DECIMAL(18,3)) < 0) >= 1;
-
-            DELETE t
-            FROM T_TEMP_RPA_HWG_PROCESSED t
-            JOIN tmp_hwg_keep k
-            ON k.COLUMN_08 = t.COLUMN_08
-            WHERE t.EXCEL_ROW_INDEX <> k.keep_row;
-
-            DROP TEMPORARY TABLE IF EXISTS tmp_hwg_keep;
+            -- Rule 2: [월납환산보험료]="마이너스금액" 데이터 행삭제
+            DELETE FROM T_TEMP_RPA_HWG_PROCESSED
+            WHERE COLUMN_18 IS NOT NULL
+              AND REPLACE(COLUMN_18, ',', '') REGEXP '^-[0-9]+'
+              AND CAST(REPLACE(COLUMN_18, ',', '') AS SIGNED) < 0;
 
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
