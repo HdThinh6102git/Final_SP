@@ -549,8 +549,7 @@ BEGIN
             ORDER BY COLUMN_15 ASC, EXCEL_ROW_INDEX ASC;
 
             DELETE FROM T_TEMP_RPA_DBG_PROCESSED
-            WHERE 
-                COLUMN_26 IN ('계속', '추징', '계속/추징', '취소/환급');
+            WHERE COLUMN_26 IN ('계속', '추징');
 
             -- Rule 3: [영수일]="빈값" & [입력일]="당월"이면 [영수일]=[입력일]로 값수정
             UPDATE T_TEMP_RPA_DBG_PROCESSED
