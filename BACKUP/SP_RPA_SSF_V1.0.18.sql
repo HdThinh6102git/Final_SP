@@ -853,22 +853,8 @@ BEGIN
             CREATE TEMPORARY TABLE tmp_tae_sum
             SELECT
                 COLUMN_01,
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') AS DECIMAL(30,6))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_08,
-
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') AS DECIMAL(30,6))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_11
-                
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_08,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_11
             FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
             GROUP BY COLUMN_01;
@@ -925,22 +911,8 @@ BEGIN
             CREATE TEMPORARY TABLE tmp_no_tae_sum
             SELECT
                 COLUMN_01,
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_08, '0')), ',', '') AS DECIMAL(30,6))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_08,
-
-                CAST(SUM(
-                    CASE
-                        WHEN REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
-                        THEN CAST(REPLACE(TRIM(IFNULL(COLUMN_11, '0')), ',', '') AS DECIMAL(30,6))
-                        ELSE 0
-                    END
-                ) AS CHAR) AS sum_11
-
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_08,
+                CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR) AS sum_11
             FROM T_TEMP_RPA_SSF_PROCESSED
             WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
             GROUP BY COLUMN_01;
@@ -1215,10 +1187,10 @@ BEGIN
         PREPARE stmt_insert FROM @sql_insert;
         EXECUTE stmt_insert;
         DEALLOCATE PREPARE stmt_insert;
-@mermaid-chart
+
         SET v_row_count = ROW_COUNT();
 
-
+        -- 2.5. Drop temp table
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_SSF_PROCESSED;
 
     END IF;
