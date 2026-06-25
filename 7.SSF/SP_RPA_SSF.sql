@@ -1145,6 +1145,7 @@ BEGIN
                     OR LEFT(REPLACE(REPLACE(COLUMN_24, '-', ''), '.', ''), 6) <> v_target_ym
                 );
 
+
             /* Rule 3: [계약상태]="공란"이면 "신계약"으로 수정 */
             UPDATE T_TEMP_RPA_SSF_PROCESSED
             SET COLUMN_22 = '신계약'
@@ -1215,7 +1216,7 @@ BEGIN
         PREPARE stmt_insert FROM @sql_insert;
         EXECUTE stmt_insert;
         DEALLOCATE PREPARE stmt_insert;
-@mermaid-chart
+
         SET v_row_count = ROW_COUNT();
 
 
