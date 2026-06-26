@@ -38,7 +38,6 @@ BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         DROP TEMPORARY TABLE IF EXISTS T_TEMP_RPA_HWG_PROCESSED;
-        DROP TEMPORARY TABLE IF EXISTS tmp_hwg_keep;
         DROP TEMPORARY TABLE IF EXISTS tmp_hwg_rule_contract;
     END;
 
@@ -446,60 +445,89 @@ BEGIN
                 COLUMN_39 = COLUMN_12;
 
             /*
-            Rule 2: Duplicate [증권번호] and at least [월납환산보험료] is negative and positive 
-            -> Keep first positive row only 
+            Rule 2: Handle Duplicate [증권번호]
+            Case 1. If [월납환산보험료] contains both positive and negative,
+            keep only the first positive row.
+
+            Case 2. If [계약상태명] contains both '철회' and '정상',
+            update [계약상태명] to '철회' and delete rows where [월납환산보험료] is negative.
             */
-            DROP TEMPORARY TABLE IF EXISTS tmp_hwg_keep;
-
-            CREATE TEMPORARY TABLE tmp_hwg_keep AS
-            SELECT
-                COLUMN_08,
-                MIN(CASE
-                    WHEN CAST(REPLACE(COLUMN_18, ',', '') AS DECIMAL(18,3)) > 0
-                    THEN EXCEL_ROW_INDEX
-                END) AS keep_row
-            FROM T_TEMP_RPA_HWG_PROCESSED
-            GROUP BY COLUMN_08
-            HAVING COUNT(*) > 1
-            AND SUM(CAST(REPLACE(COLUMN_18, ',', '') AS DECIMAL(18,3)) > 0) >= 1
-            AND SUM(CAST(REPLACE(COLUMN_18, ',', '') AS DECIMAL(18,3)) < 0) >= 1;
-
-            DELETE t
-            FROM T_TEMP_RPA_HWG_PROCESSED t
-            JOIN tmp_hwg_keep k
-            ON k.COLUMN_08 = t.COLUMN_08
-            WHERE t.EXCEL_ROW_INDEX <> k.keep_row;
-
-            DROP TEMPORARY TABLE IF EXISTS tmp_hwg_keep;
-
-            /*
-            Rule 3:
-            중복 [증권번호]의 [상태]에 '철회'와 '정상'이 모두 존재하는 경우
-            -> [상태]를 '철회'로 수정
-            -> [보험료]가 음수인 데이터 행 삭제
-            */
-
             DROP TEMPORARY TABLE IF EXISTS tmp_hwg_rule_contract;
 
             CREATE TEMPORARY TABLE tmp_hwg_rule_contract AS
             SELECT
-                COLUMN_08
+                COLUMN_08,
+
+                MIN(CASE
+                    WHEN CAST(IFNULL(NULLIF(TRIM(REPLACE(COLUMN_18, ',', '')), ''), '0') AS DECIMAL(18,3)) > 0
+                    THEN EXCEL_ROW_INDEX
+                END) AS keep_positive_row,
+
+                SUM(CAST(IFNULL(NULLIF(TRIM(REPLACE(COLUMN_18, ',', '')), ''), '0') AS DECIMAL(18,3)) > 0) AS positive_count,
+                SUM(CAST(IFNULL(NULLIF(TRIM(REPLACE(COLUMN_18, ',', '')), ''), '0') AS DECIMAL(18,3)) < 0) AS negative_count,
+
+                SUM(TRIM(COLUMN_17) = '철회') AS withdraw_count,
+                SUM(TRIM(COLUMN_17) = '정상') AS normal_count
             FROM T_TEMP_RPA_HWG_PROCESSED
+            WHERE COLUMN_08 IS NOT NULL
             GROUP BY COLUMN_08
             HAVING COUNT(*) > 1
-            AND SUM(TRIM(COLUMN_17) = '철회') >= 1
-            AND SUM(TRIM(COLUMN_17) = '정상') >= 1;
+            AND (
+                    -- Case 1: duplicated [증권번호] has both positive and negative
+                    (
+                        SUM(CAST(IFNULL(NULLIF(TRIM(REPLACE(COLUMN_18, ',', '')), ''), '0') AS DECIMAL(18,3)) > 0) >= 1
+                        AND
+                        SUM(CAST(IFNULL(NULLIF(TRIM(REPLACE(COLUMN_18, ',', '')), ''), '0') AS DECIMAL(18,3)) < 0) >= 1
+                    )
+                    -- Case 2: duplicated [증권번호] has both '철회' and '정상' in [계약상태명]
+                    OR
+                    (
+                        SUM(TRIM(COLUMN_17) = '철회') >= 1
+                        AND
+                        SUM(TRIM(COLUMN_17) = '정상') >= 1
+                    )
+            );
+            
+            /*
+            Delete duplicate rows.
 
-            UPDATE T_TEMP_RPA_HWG_PROCESSED t
-            JOIN tmp_hwg_rule_contract r
-            ON r.COLUMN_08 = t.COLUMN_08
-            SET t.COLUMN_17 = '철회';
+            Case 1:
+            If duplicated [증권번호] has both positive and negative [월납환산보험료],
+            delete all rows except the first positive row.
 
+            Case 2:
+            If duplicated [증권번호] has both '철회' and '정상' in [계약상태명],
+            delete rows where [월납환산보험료] is negative.
+            */
             DELETE t
             FROM T_TEMP_RPA_HWG_PROCESSED t
             JOIN tmp_hwg_rule_contract r
             ON r.COLUMN_08 = t.COLUMN_08
-            WHERE CAST(REPLACE(IFNULL(t.COLUMN_18, '0'), ',', '') AS DECIMAL(18,3)) < 0;
+            WHERE
+                (
+                    r.positive_count >= 1
+                    AND r.negative_count >= 1
+                    AND t.EXCEL_ROW_INDEX <> r.keep_positive_row
+                )
+                OR
+                (
+                    r.withdraw_count >= 1
+                    AND r.normal_count >= 1
+                    AND CAST(IFNULL(NULLIF(TRIM(REPLACE(t.COLUMN_18, ',', '')), ''), '0') AS DECIMAL(18,3)) < 0
+                );
+
+            /*
+            Update status.
+
+            For duplicated [증권번호] had both '철회' and '정상',
+            update the remaining rows' [계약상태명] to '철회'.
+            */
+            UPDATE T_TEMP_RPA_HWG_PROCESSED t
+            JOIN tmp_hwg_rule_contract r
+            ON r.COLUMN_08 = t.COLUMN_08
+            SET t.COLUMN_17 = '철회'
+            WHERE r.withdraw_count >= 1
+            AND r.normal_count >= 1;
 
             DROP TEMPORARY TABLE IF EXISTS tmp_hwg_rule_contract;
 
