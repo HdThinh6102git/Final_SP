@@ -476,7 +476,6 @@ BEGIN
             Rule 3:
             중복 [증권번호]의 [상태]에 '철회'와 '정상'이 모두 존재하는 경우
             -> [상태]를 '철회'로 수정
-            -> [보험료]가 음수인 데이터 행 삭제
             */
 
             DROP TEMPORARY TABLE IF EXISTS tmp_hwg_rule_contract;
@@ -494,12 +493,6 @@ BEGIN
             JOIN tmp_hwg_rule_contract r
             ON r.COLUMN_08 = t.COLUMN_08
             SET t.COLUMN_17 = '철회';
-
-            DELETE t
-            FROM T_TEMP_RPA_HWG_PROCESSED t
-            JOIN tmp_hwg_rule_contract r
-            ON r.COLUMN_08 = t.COLUMN_08
-            WHERE CAST(REPLACE(IFNULL(t.COLUMN_18, '0'), ',', '') AS DECIMAL(18,3)) < 0;
 
             DROP TEMPORARY TABLE IF EXISTS tmp_hwg_rule_contract;
 
