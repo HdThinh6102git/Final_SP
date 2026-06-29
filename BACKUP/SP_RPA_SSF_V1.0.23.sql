@@ -3,8 +3,7 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_SSF`(
     IN IN_INSURANCE_TYPE VARCHAR(50),
     IN IN_CONTRACT_TYPE  VARCHAR(20),
     IN IN_TARGET_START_DATE DATE,
-    IN IN_TARGET_END_DATE DATE,
-    IN IN_PROCESS_ROUND  INT
+    IN IN_TARGET_END_DATE DATE
 )
 BEGIN
     -- [DECLARE variables]
@@ -773,392 +772,185 @@ BEGIN
         -- [LTR Logic]
         IF UPPER(IN_INSURANCE_TYPE) = 'LTR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
 
-            IF IN_PROCESS_ROUND = 1 THEN
-                /* Rule 1: 맨 마지막열 값 추가(2개)
-                   ① 항목명I : 납기구분 / 항목값 : 년납
-                   ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
-                   ※ 전체 행에 반영
-                */
-                UPDATE T_TEMP_RPA_SSF_PROCESSED
-                SET COLUMN_67 = '년납',
-                    COLUMN_68 = v_target_ym;
+            /* Rule 1: 맨 마지막열 값 추가(2개)
+               ① 항목명I : 납기구분 / 항목값 : 년납
+               ② 항목명II : 납입월 / 항목값 : 해당월(ex.202512)
+               ※ 전체 행에 반영
+            */
+            UPDATE T_TEMP_RPA_SSF_PROCESSED
+            SET COLUMN_67 = '년납',
+                COLUMN_68 = v_target_ym;
 
-                /* Rule 2: [계약상태] 편집
-                   ① [계약상태]≠"신계약,취소,해지"이면 데이터 행삭제
-                   ② [계약상태]="해지,취소" & [장기청약일]≠해당월이면 데이터 행삭제
-                */
-                -- Rule 2①
-                DELETE FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_22 NOT IN ('신계약', '취소', '해지');
+            /* Rule 2: [계약상태] 편집
+               ① [계약상태]≠"신계약,취소,해지"이면 데이터 행삭제
+               ② [계약상태]="해지,취소" & [장기청약일]≠해당월이면 데이터 행삭제
+            */
+            -- Rule 2①
+            DELETE FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_22 NOT IN ('신계약', '취소', '해지');
 
-                -- Rule 2②
-                DELETE FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_22 IN ('해지', '취소')
-                  AND DATE_FORMAT(COLUMN_24, '%Y%m') != v_target_ym;
+            -- Rule 2②
+            DELETE FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_22 IN ('해지', '취소')
+              AND DATE_FORMAT(COLUMN_24, '%Y%m') != v_target_ym;
 
-                /* Rule 3: 계약번호 중복 편집
-                 ① 계약번호 오름차순 정렬
-                 ② 
-                 중복 계약번호 중 [피보험자]="태아"가 있는 경우 "보험료, 월납환산수정P"항목은 합산하여 한건으로 값수정
+           /* Rule 3: 계약번호 중복 편집
+            ① 계약번호 오름차순 정렬
+            ② 
+            중복 계약번호 중 [피보험자]="태아"가 있는 경우 "보험료, 월납환산수정P"항목은 합산하여 한건으로 값수정
 
-                 (단, [피보험자명]="태아/계약자명"이면 "태아"로, [피보험자명]="공백, 계약자명"이면 "계약자명"으로 한건만 반영)
-                */
+            (단, [피보험자명]="태아/계약자명"이면 "태아"로, [피보험자명]="공백, 계약자명"이면 "계약자명"으로 한건만 반영)
+            */
 
-                -- ① 계약번호 오름차순 정렬
-                SET @seq := 0;
-                UPDATE T_TEMP_RPA_SSF_PROCESSED
-                SET SORT_ORDER_NO = (@seq := @seq + 1)
-                ORDER BY COLUMN_01 ASC, EXCEL_ROW_INDEX ASC;
+            -- ① 계약번호 오름차순 정렬
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_SSF_PROCESSED
+            SET SORT_ORDER_NO = (@seq := @seq + 1)
+            ORDER BY COLUMN_01 ASC, EXCEL_ROW_INDEX ASC;
 
-                -- Find duplicated contracts
-                DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
-                CREATE TEMPORARY TABLE tmp_dup_contract
-                SELECT COLUMN_01
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                GROUP BY COLUMN_01
-                HAVING COUNT(*) > 1;
+            -- Find duplicated contracts
+            DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
+            CREATE TEMPORARY TABLE tmp_dup_contract
+            SELECT COLUMN_01
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            GROUP BY COLUMN_01
+            HAVING COUNT(*) > 1;
 
-                -- =====================================================
-                -- Case 1: Duplicate contracts that HAVE '태아'
-                -- Keep 1 row with 피보험자명='태아'
-                -- Sum all duplicated rows into that row
-                -- Delete all remaining rows
-                -- =====================================================
-                DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
-                CREATE TEMPORARY TABLE tmp_tae_contract
-                SELECT COLUMN_01
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
-                GROUP BY COLUMN_01
-                HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) > 0;
+            -- =====================================================
+            -- Case 1: Duplicate contracts that HAVE '태아'
+            -- Keep 1 row with 피보험자명='태아'
+            -- Sum all duplicated rows into that row
+            -- Delete all remaining rows
+            -- =====================================================
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
+            CREATE TEMPORARY TABLE tmp_tae_contract
+            SELECT COLUMN_01
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
+            GROUP BY COLUMN_01
+            HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) > 0;
 
-                DROP TEMPORARY TABLE IF EXISTS tmp_tae_sum;
-                CREATE TEMPORARY TABLE tmp_tae_sum
-                SELECT
-                    COLUMN_01,
-                    FORMAT(CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR), 0) AS sum_08,
-                    FORMAT(CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR), 0) AS sum_11
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
-                GROUP BY COLUMN_01;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_sum;
+            CREATE TEMPORARY TABLE tmp_tae_sum
+            SELECT
+                COLUMN_01,
+                FORMAT(CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_08, '0'), ',', '') AS SIGNED)) AS CHAR), 0) AS sum_08,
+                FORMAT(CAST(SUM(CAST(REPLACE(IFNULL(COLUMN_11, '0'), ',', '') AS SIGNED)) AS CHAR), 0) AS sum_11
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
+            GROUP BY COLUMN_01;
 
-                DROP TEMPORARY TABLE IF EXISTS tmp_tae_keep;
-                CREATE TEMPORARY TABLE tmp_tae_keep
-                SELECT
-                    COLUMN_01,
-                    MIN(EXCEL_ROW_INDEX) AS keep_row
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
-                AND TRIM(IFNULL(COLUMN_05, '')) = '태아'
-                GROUP BY COLUMN_01;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_keep;
+            CREATE TEMPORARY TABLE tmp_tae_keep
+            SELECT
+                COLUMN_01,
+                MIN(EXCEL_ROW_INDEX) AS keep_row
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_tae_contract)
+            AND TRIM(IFNULL(COLUMN_05, '')) = '태아'
+            GROUP BY COLUMN_01;
 
-                UPDATE T_TEMP_RPA_SSF_PROCESSED t
-                INNER JOIN tmp_tae_keep k
-                    ON t.COLUMN_01 = k.COLUMN_01
-                AND t.EXCEL_ROW_INDEX = k.keep_row
-                INNER JOIN tmp_tae_sum s
-                    ON t.COLUMN_01 = s.COLUMN_01
-                SET
-                    t.COLUMN_08 = s.sum_08,
-                    t.COLUMN_11 = s.sum_11,
-                    t.COLUMN_05 = '태아';
+            UPDATE T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_tae_keep k
+                ON t.COLUMN_01 = k.COLUMN_01
+            AND t.EXCEL_ROW_INDEX = k.keep_row
+            INNER JOIN tmp_tae_sum s
+                ON t.COLUMN_01 = s.COLUMN_01
+            SET
+                t.COLUMN_08 = s.sum_08,
+                t.COLUMN_11 = s.sum_11,
+                t.COLUMN_05 = '태아';
 
-                DELETE t
-                FROM T_TEMP_RPA_SSF_PROCESSED t
-                INNER JOIN tmp_tae_contract c
-                    ON t.COLUMN_01 = c.COLUMN_01
-                LEFT JOIN tmp_tae_keep k
-                    ON t.COLUMN_01 = k.COLUMN_01
-                AND t.EXCEL_ROW_INDEX = k.keep_row
-                WHERE k.keep_row IS NULL;
+            DELETE t
+            FROM T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_tae_contract c
+                ON t.COLUMN_01 = c.COLUMN_01
+            LEFT JOIN tmp_tae_keep k
+                ON t.COLUMN_01 = k.COLUMN_01
+            AND t.EXCEL_ROW_INDEX = k.keep_row
+            WHERE k.keep_row IS NULL;
 
-                -- =====================================================
-                -- Case 2: Duplicate contracts that DO NOT have '태아'
-                -- and have both blank + non-blank 피보험자명
-                -- Keep 1 non-blank row only
-                -- Do NOT sum COLUMN_08 / COLUMN_11
-                -- =====================================================
-                DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
-                CREATE TEMPORARY TABLE tmp_no_tae_mix
-                SELECT COLUMN_01
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
-                GROUP BY COLUMN_01
-                    HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) = 0
-                    AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '' THEN 1 ELSE 0 END) > 0
-                    AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN 1 ELSE 0 END) > 0;
+            -- =====================================================
+            -- Case 2: Duplicate contracts that DO NOT have '태아'
+            -- and have both blank + non-blank 피보험자명
+            -- Keep 1 non-blank row only
+            -- Do NOT sum COLUMN_08 / COLUMN_11
+            -- =====================================================
+            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
+            CREATE TEMPORARY TABLE tmp_no_tae_mix
+            SELECT COLUMN_01
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_dup_contract)
+            GROUP BY COLUMN_01
+                HAVING SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '태아' THEN 1 ELSE 0 END) = 0
+                AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) = '' THEN 1 ELSE 0 END) > 0
+                AND SUM(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN 1 ELSE 0 END) > 0;
 
-                DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
-                CREATE TEMPORARY TABLE tmp_no_tae_keep
-                SELECT
-                    COLUMN_01,
-                    MIN(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN EXCEL_ROW_INDEX END) AS keep_row
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
-                GROUP BY COLUMN_01;
+            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
+            CREATE TEMPORARY TABLE tmp_no_tae_keep
+            SELECT
+                COLUMN_01,
+                MIN(CASE WHEN TRIM(IFNULL(COLUMN_05, '')) <> '' THEN EXCEL_ROW_INDEX END) AS keep_row
+            FROM T_TEMP_RPA_SSF_PROCESSED
+            WHERE COLUMN_01 IN (SELECT COLUMN_01 FROM tmp_no_tae_mix)
+            GROUP BY COLUMN_01;
 
-                DELETE t
-                FROM T_TEMP_RPA_SSF_PROCESSED t
-                INNER JOIN tmp_no_tae_mix d
-                    ON t.COLUMN_01 = d.COLUMN_01
-                LEFT JOIN tmp_no_tae_keep k
-                    ON t.COLUMN_01 = k.COLUMN_01
-                AND t.EXCEL_ROW_INDEX = k.keep_row
-                WHERE k.keep_row IS NULL;
+            DELETE t
+            FROM T_TEMP_RPA_SSF_PROCESSED t
+            INNER JOIN tmp_no_tae_mix d
+                ON t.COLUMN_01 = d.COLUMN_01
+            LEFT JOIN tmp_no_tae_keep k
+                ON t.COLUMN_01 = k.COLUMN_01
+            AND t.EXCEL_ROW_INDEX = k.keep_row
+            WHERE k.keep_row IS NULL;
 
-                -- Re-sequence after deletion
-                SET @seq := 0;
-                UPDATE T_TEMP_RPA_SSF_PROCESSED
-                SET SORT_ORDER_NO = (@seq := @seq + 1)
-                ORDER BY COLUMN_01 ASC, EXCEL_ROW_INDEX ASC;
+            -- Re-sequence after deletion
+            SET @seq := 0;
+            UPDATE T_TEMP_RPA_SSF_PROCESSED
+            SET SORT_ORDER_NO = (@seq := @seq + 1)
+            ORDER BY COLUMN_01 ASC, EXCEL_ROW_INDEX ASC;
 
-                -- Cleanup
-                DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
-                DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
-                DROP TEMPORARY TABLE IF EXISTS tmp_tae_sum;
-                DROP TEMPORARY TABLE IF EXISTS tmp_tae_keep;
-                DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
-                DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
+            -- Cleanup
+            DROP TEMPORARY TABLE IF EXISTS tmp_dup_contract;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_contract;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_sum;
+            DROP TEMPORARY TABLE IF EXISTS tmp_tae_keep;
+            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_mix;
+            DROP TEMPORARY TABLE IF EXISTS tmp_no_tae_keep;
 
-                /* Rule 4: 상품명 원수사 원부확인하여 값수정
-                   (장기>계약상세조회>"특성조회항목" → 상품명 확인)
-                */
-                -- Update product names from T_RPA_CONTRACT_NAME
-                UPDATE T_TEMP_RPA_SSF_PROCESSED a
-                INNER JOIN T_RPA_CONTRACT_NAME b
-                ON a.COLUMN_01 = b.CONTRACT_NO
-                  AND b.SYS_FLAG = '1'
-                SET a.COLUMN_02 = b.CONTRACT_NAME;
+            /* Rule 4: 상품명 원수사 원부확인하여 값수정
+               (장기>계약상세조회>"특성조회항목" → 상품명 확인)
+            */
+            UPDATE T_TEMP_RPA_SSF_PROCESSED a
+            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
+            ON
+                a.COLUMN_02 = b.BEFORE_COLUMN_DATA
+                AND b.SYS_FLAG = '1'
+                AND b.BATCH_ID = IN_BATCH_ID
+                AND b.COMPANY_CODE = v_company_code
+                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
+                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
+                AND b.BUSINESS_RULE_NO = 4
+                AND b.COLUMN_NAME = '상품명'
+                AND b.ACTION = 'UPD'
+            SET a.COLUMN_02 = b.AFTER_COLUMN_DATA;
 
-                -- Delete previous extra guide records for this batch/company/rule for safety
-                DELETE FROM T_RPA_INSURANCE_EXTRA_GUIDE
-                WHERE BATCH_ID = IN_BATCH_ID
-                  AND COMPANY_CODE = v_company_code
-                  AND INSURANCE_TYPE = IN_INSURANCE_TYPE
-                  AND CONTRACT_TYPE = IN_CONTRACT_TYPE
-                  AND BUSINESS_RULE_NO IN (4, 5);
-
-                -- Rule 4 INSERT: Add unique product name
-                -- Only filters rows where product code starts with "Z", and excludes contracts already in T_RPA_CONTRACT_NAME
-                DROP TEMPORARY TABLE IF EXISTS tmp_rule4_helper;
-                CREATE TEMPORARY TABLE tmp_rule4_helper AS
-                SELECT 
-                    TRIM(COLUMN_02) AS productName,
-                    MIN(EXCEL_ROW_INDEX) AS min_index
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COMPANY_CODE = v_company_code
-                  AND BATCH_ID = IN_BATCH_ID
-                  AND UPPER(CONTRACT_TYPE) = UPPER(IN_CONTRACT_TYPE)
-                  -- Rule 4 ONLY: Skip rows where product code does not start with "Z"
-                  AND COLUMN_03 IS NOT NULL 
-                  AND TRIM(COLUMN_03) LIKE 'Z%'
-                  -- Skip empty contract code or product name
-                  AND COLUMN_01 IS NOT NULL 
-                  AND TRIM(COLUMN_01) <> ''
-                  AND COLUMN_02 IS NOT NULL 
-                  AND TRIM(COLUMN_02) <> ''
-                  -- Exclude contracts already in T_RPA_CONTRACT_NAME
-                  AND COLUMN_01 NOT IN (
-                      SELECT CONTRACT_NO 
-                      FROM T_RPA_CONTRACT_NAME 
-                      WHERE SYS_FLAG = '1'
-                  )
-                GROUP BY TRIM(COLUMN_02);
-
-                INSERT INTO T_RPA_INSURANCE_EXTRA_GUIDE (
-                    SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, SYS_FLAG, BATCH_ID,
-                    COMPANY_CODE, INSURANCE_TYPE, CONTRACT_TYPE, BUSINESS_RULE_NO,
-                    COLUMN_NAME, SEARCH_DATA, BEFORE_COLUMN_DATA, AFTER_COLUMN_DATA, ACTION
-                )
-                SELECT 
-                    REPLACE(UUID(), '-', '') AS SYS_ID,
-                    UTC_TIMESTAMP() AS SYS_CREATE_DATE,
-                    UTC_TIMESTAMP() AS SYS_MODIFY_DATE,
-                    '1' AS SYS_FLAG,
-                    IN_BATCH_ID AS BATCH_ID,
-                    v_company_code AS COMPANY_CODE,
-                    IN_INSURANCE_TYPE AS INSURANCE_TYPE,
-                    IN_CONTRACT_TYPE AS CONTRACT_TYPE,
-                    4 AS BUSINESS_RULE_NO,
-                    '상품명' AS COLUMN_NAME,
-                    t.COLUMN_01 AS SEARCH_DATA,
-                    t.COLUMN_02 AS BEFORE_COLUMN_DATA,
-                    '' AS AFTER_COLUMN_DATA,
-                    'UPD' AS ACTION
-                FROM T_TEMP_RPA_SSF_PROCESSED t
-                INNER JOIN tmp_rule4_helper g 
-                    ON TRIM(t.COLUMN_02) = g.productName 
-                   AND t.EXCEL_ROW_INDEX = g.min_index;
-
-                DROP TEMPORARY TABLE IF EXISTS tmp_rule4_helper;
-
-                /* Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
-                   → 장기>계약상세조회>"납입정보의 전체 회 / 12"계산한 값
-                */
-                -- Rule 5 INSERT: Product code starts with "Z" check is NOT applied here
-                INSERT INTO T_RPA_INSURANCE_EXTRA_GUIDE (
-                    SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, SYS_FLAG, BATCH_ID,
-                    COMPANY_CODE, INSURANCE_TYPE, CONTRACT_TYPE, BUSINESS_RULE_NO,
-                    COLUMN_NAME, SEARCH_DATA, BEFORE_COLUMN_DATA, AFTER_COLUMN_DATA, ACTION
-                )
-                SELECT 
-                    REPLACE(UUID(), '-', '') AS SYS_ID,
-                    UTC_TIMESTAMP() AS SYS_CREATE_DATE,
-                    UTC_TIMESTAMP() AS SYS_MODIFY_DATE,
-                    '1' AS SYS_FLAG,
-                    IN_BATCH_ID AS BATCH_ID,
-                    v_company_code AS COMPANY_CODE,
-                    IN_INSURANCE_TYPE AS INSURANCE_TYPE,
-                    IN_CONTRACT_TYPE AS CONTRACT_TYPE,
-                    5 AS BUSINESS_RULE_NO,
-                    '납입기간' AS COLUMN_NAME,
-                    COLUMN_01 AS SEARCH_DATA,
-                    COLUMN_31 AS BEFORE_COLUMN_DATA,
-                    '0' AS AFTER_COLUMN_DATA,
-                    'UPD' AS ACTION
-                FROM T_TEMP_RPA_SSF_PROCESSED
-                WHERE COMPANY_CODE = v_company_code
-                  AND BATCH_ID = IN_BATCH_ID
-                  AND UPPER(CONTRACT_TYPE) = UPPER(IN_CONTRACT_TYPE)
-                  -- Skip empty contract code or product name
-                  AND COLUMN_01 IS NOT NULL 
-                  AND TRIM(COLUMN_01) <> ''
-                  AND COLUMN_02 IS NOT NULL 
-                  AND TRIM(COLUMN_02) <> ''
-                  -- Payment period is '0'
-                  AND COLUMN_31 IS NOT NULL 
-                  AND TRIM(COLUMN_31) = '0';
-
-            ELSEIF IN_PROCESS_ROUND = 2 THEN
-                -- 1. Clear raw data currently in T_TEMP_RPA_SSF_PROCESSED
-                DELETE FROM T_TEMP_RPA_SSF_PROCESSED;
-
-                -- 2. Load processed data from target processed table
-                SET @sql_load_proc = CONCAT(
-                    'INSERT INTO T_TEMP_RPA_SSF_PROCESSED SELECT * FROM ', v_proc_table, 
-                    ' WHERE COMPANY_CODE = ''', v_company_code, '''',
-                    '   AND BATCH_ID = ''', IN_BATCH_ID, '''',
-                    '   AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
-                );
-                PREPARE stmt_load FROM @sql_load_proc;
-                EXECUTE stmt_load;
-                DEALLOCATE PREPARE stmt_load;
-
-                -- 3. Apply Rule 4 and Rule 5 updates from T_RPA_INSURANCE_EXTRA_GUIDE
-                /* Rule 4: 상품명 원수사 원부확인하여 값수정
-                   (장기>계약상세조회>"특성조회항목" → 상품명 확인)
-                */
-                UPDATE T_TEMP_RPA_SSF_PROCESSED a
-                INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                ON
-                    a.COLUMN_02 = b.BEFORE_COLUMN_DATA
-                    AND b.SYS_FLAG = '1'
-                    AND b.BATCH_ID = IN_BATCH_ID
-                    AND b.COMPANY_CODE = v_company_code
-                    AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                    AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                    AND b.BUSINESS_RULE_NO = 4
-                    AND b.COLUMN_NAME = '상품명'
-                    AND b.ACTION = 'UPD'
-                SET a.COLUMN_02 = b.AFTER_COLUMN_DATA;
-
-                -- Insert/update resolved product names into T_RPA_CONTRACT_NAME
-                INSERT INTO T_RPA_CONTRACT_NAME (
-                    SYS_ID, SYS_CREATE_BY, SYS_MODIFY_BY, SYS_CREATE_DATE, SYS_MODIFY_DATE, SYS_FLAG,
-                    CONTRACT_NO, CONTRACT_NAME
-                )
-                SELECT 
-                    REPLACE(UUID(), '-', '') AS SYS_ID,
-                    'System' AS SYS_CREATE_BY,
-                    'System' AS SYS_MODIFY_BY,
-                    UTC_TIMESTAMP() AS SYS_CREATE_DATE,
-                    UTC_TIMESTAMP() AS SYS_MODIFY_DATE,
-                    '1' AS SYS_FLAG,
-                    a.COLUMN_01 AS CONTRACT_NO,
-                    a.COLUMN_02 AS CONTRACT_NAME
-                FROM T_TEMP_RPA_SSF_PROCESSED a
-                INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                ON
-                    a.COLUMN_02 = b.AFTER_COLUMN_DATA
-                    AND b.SYS_FLAG = '1'
-                    AND b.BATCH_ID = IN_BATCH_ID
-                    AND b.COMPANY_CODE = v_company_code
-                    AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                    AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                    AND b.BUSINESS_RULE_NO = 4
-                    AND b.COLUMN_NAME = '상품명'
-                    AND b.ACTION = 'UPD'
-                ON DUPLICATE KEY UPDATE 
-                    CONTRACT_NAME = VALUES(CONTRACT_NAME),
-                    SYS_MODIFY_DATE = VALUES(SYS_MODIFY_DATE);
-
-                -- Insert the new contract names into T_RPA_CONTRACT_NAME
-                INSERT INTO T_RPA_CONTRACT_NAME (
-                    SYS_ID, SYS_CREATE_DATE, SYS_MODIFY_DATE, SYS_FLAG,
-                    CONTRACT_NO, CONTRACT_NAME
-                )
-                SELECT 
-                    REPLACE(UUID(), '-', '') AS SYS_ID,
-                    UTC_TIMESTAMP() AS SYS_CREATE_DATE,
-                    UTC_TIMESTAMP() AS SYS_MODIFY_DATE,
-                    '1' AS SYS_FLAG,
-                    val.CONTRACT_NO,
-                    val.CONTRACT_NAME
-                FROM (
-                    SELECT DISTINCT
-                        a.COLUMN_01 AS CONTRACT_NO,
-                        a.COLUMN_02 AS CONTRACT_NAME
-                    FROM T_TEMP_RPA_SSF_PROCESSED a
-                    INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                    ON
-                        a.COLUMN_02 = b.AFTER_COLUMN_DATA
-                        AND b.SYS_FLAG = '1'
-                        AND b.BATCH_ID = IN_BATCH_ID
-                        AND b.COMPANY_CODE = v_company_code
-                        AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                        AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                        AND b.BUSINESS_RULE_NO = 4
-                        AND b.COLUMN_NAME = '상품명'
-                        AND b.ACTION = 'UPD'
-                    WHERE a.COLUMN_01 IS NOT NULL
-                      AND TRIM(a.COLUMN_01) <> ''
-                      AND a.COLUMN_01 NOT IN (
-                          SELECT CONTRACT_NO
-                          FROM T_RPA_CONTRACT_NAME
-                          WHERE SYS_FLAG = '1'
-                      )
-                ) val;
-
-                /* Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
-                   → 장기>계약상세조회>"납입정보의 전체 회 / 12"계산한 값
-                */
-                UPDATE T_TEMP_RPA_SSF_PROCESSED a
-                INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
-                ON
-                    a.COLUMN_01 = b.SEARCH_DATA
-                    AND b.SYS_FLAG = '1'
-                    AND b.BATCH_ID = IN_BATCH_ID
-                    AND b.COMPANY_CODE = v_company_code
-                    AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
-                    AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
-                    AND b.BUSINESS_RULE_NO = 5
-                    AND b.COLUMN_NAME = '납입기간'
-                    AND b.ACTION = 'UPD'
-                SET a.COLUMN_31 = b.AFTER_COLUMN_DATA;
-
-                -- 4. Delete existing records from processed table (prevent duplicate key/data upon insert at the end of SP)
-                -- Running this at the end of the block ensures it is safe and will not run if previous updates fail.
-                SET @sql_del_proc = CONCAT(
-                    'DELETE FROM ', v_proc_table, 
-                    ' WHERE COMPANY_CODE = ''', v_company_code, '''',
-                    '   AND BATCH_ID = ''', IN_BATCH_ID, '''',
-                    '   AND UPPER(CONTRACT_TYPE) = UPPER(''', IN_CONTRACT_TYPE, ''');'
-                );
-                PREPARE stmt_del FROM @sql_del_proc;
-                EXECUTE stmt_del;
-                DEALLOCATE PREPARE stmt_del;
-
-            END IF;
+            /* Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
+               → 장기>계약상세조회>"납입정보의 전체 회 / 12"계산한 값
+            */
+            UPDATE T_TEMP_RPA_SSF_PROCESSED a
+            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b
+            ON
+                a.COLUMN_01 = b.SEARCH_DATA
+                AND b.SYS_FLAG = '1'
+                AND b.BATCH_ID = IN_BATCH_ID
+                AND b.COMPANY_CODE = v_company_code
+                AND b.INSURANCE_TYPE = IN_INSURANCE_TYPE
+                AND b.CONTRACT_TYPE = IN_CONTRACT_TYPE
+                AND b.BUSINESS_RULE_NO = 5
+                AND b.COLUMN_NAME = '납입기간'
+                AND b.ACTION = 'UPD'
+            SET a.COLUMN_31 = b.AFTER_COLUMN_DATA;
 
         -- [CAR Logic]
         ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
