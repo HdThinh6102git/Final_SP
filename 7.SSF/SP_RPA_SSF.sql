@@ -38,6 +38,17 @@ BEGIN
 
     END;
 
+    -- [INIT Debug Log Table]
+    CREATE TABLE IF NOT EXISTS T_RPA_DEBUG_LOG (
+        BATCH_ID       VARCHAR(100),
+        COMPANY_CODE   VARCHAR(10),
+        INSURANCE_TYPE VARCHAR(50),
+        CONTRACT_TYPE  VARCHAR(20),
+        STEP_NAME      VARCHAR(100),
+        ROW_COUNT      INT,
+        LOG_TIME       DATETIME
+    );
+
     -- [SET internal logic]
     IF IN_TARGET_END_DATE IS NULL THEN
         SET v_target_ym = DATE_FORMAT(NOW(), '%Y%m');
@@ -990,6 +1001,11 @@ BEGIN
                     ON TRIM(t.COLUMN_02) = g.productName 
                    AND t.EXCEL_ROW_INDEX = g.min_index;
 
+                INSERT INTO T_RPA_DEBUG_LOG VALUES (
+                    IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
+                    '(SSF NEW LTR) Rule 4 Extra Guide Inserted', ROW_COUNT(), NOW()
+                );
+
                 DROP TEMPORARY TABLE IF EXISTS tmp_rule4_helper;
 
                 /* Rule 5: [납입기간]="0"이면 원수사 원부확인하여 값수정
@@ -1028,6 +1044,11 @@ BEGIN
                   -- Payment period is '0'
                   AND COLUMN_31 IS NOT NULL 
                   AND TRIM(COLUMN_31) = '0';
+
+                INSERT INTO T_RPA_DEBUG_LOG VALUES (
+                    IN_BATCH_ID, v_company_code, IN_INSURANCE_TYPE, IN_CONTRACT_TYPE,
+                    '(SSF NEW LTR) Rule 5 Extra Guide Inserted', ROW_COUNT(), NOW()
+                );
 
             ELSEIF IN_PROCESS_ROUND = 2 THEN
                 -- 1. Clear raw data currently in T_TEMP_RPA_SSF_PROCESSED
