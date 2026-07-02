@@ -617,7 +617,7 @@ BEGIN
             WHERE COLUMN_14 = '0'
                OR CAST(IFNULL(COLUMN_14, '0') AS SIGNED) = 0;
 
-            -- Rule 4:  [건수]="1" & [납입방법]≠"월납,일시납"이고 [보험시작일자]<"해당월"(해당월보다 과거 시점)인 데이터 행삭제
+            -- Rule 4: [건수]="1" & [납입방법]≠"월납,일시납"이고 [보험시작일자]≠"해당월"인 데이터 행삭제
             DELETE FROM T_TEMP_RPA_KBG_PROCESSED
             WHERE (COLUMN_14 = '1' OR CAST(IFNULL(COLUMN_14, '0') AS SIGNED) = 1)
               AND IFNULL(COLUMN_17, '') NOT IN ('월납', '일시납')

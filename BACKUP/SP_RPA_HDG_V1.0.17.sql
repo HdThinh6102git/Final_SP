@@ -717,7 +717,7 @@ BEGIN
             WHERE COLUMN_12 IN (SELECT COLUMN_12 FROM tmp_dup_case)
                 AND (COLUMN_19 LIKE '-%' OR CAST(REPLACE(COLUMN_19,',','') AS SIGNED) < 0);
                 
-            -- Rule 4: [계약구분]="공동인수"이면 [공동인수보험료]와 [수정보험료] 값을 합하여 [수정보험료]로 값수정
+            -- Rule 4: [계약구분]="공동인수"이면 중복증번의 [공동인수보험료]와 [수정보험료] 값을 각각 합하여 [공동인수보험료],[수정보험료]로 값수정해주고 [보험료]값도 수정한 [공동인수보험료]로 변경해줌
             UPDATE T_TEMP_RPA_HDG_PROCESSED
             SET COLUMN_24 = CAST(
                     CAST(REPLACE(IFNULL(COLUMN_29, '0'), ',', '') AS DECIMAL(15,2))
