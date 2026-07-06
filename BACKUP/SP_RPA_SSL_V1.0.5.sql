@@ -277,13 +277,6 @@ BEGIN
                 → 글자수가 “12”이면 증번앞에 “0”을 붙여서 만들어 줌
                 → 글자수가 “13”이면 증번 그대로 사용
             */
-            -- Step 1: Remove the leading zeros.
-            UPDATE T_TEMP_RPA_SSL_PROCESSED
-            SET COLUMN_10 = TRIM(
-              LEADING '0' FROM REGEXP_REPLACE(COLUMN_10, '[^0-9]', '')
-            );
-
-            -- Step 2: Update [계약번호]
             UPDATE T_TEMP_RPA_SSL_PROCESSED
             SET COLUMN_10 = CASE
                 WHEN CHAR_LENGTH(REGEXP_REPLACE(COLUMN_10, '[^0-9]', '')) IN (10, 14)
