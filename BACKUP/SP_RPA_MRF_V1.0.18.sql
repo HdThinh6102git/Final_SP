@@ -972,10 +972,10 @@ BEGIN
             SET COLUMN_55 = COLUMN_04
             WHERE COLUMN_56 IN ('취소', '철회');
 
-            -- Rule 6: [계약상태상세명]=“실효” & [최종납입년월]=“실효 3년 경과”면, [계약상태명]값을 “시효”로 변경
+            -- Rule 6: [계약상태명]=“실효” & [최종납입년월]=“실효 3년 경과”면, [계약상태명]값을 “시효”로 변경
             UPDATE T_TEMP_RPA_MRF_PROCESSED
             SET COLUMN_53 = '시효'
-            WHERE COLUMN_56 = '실효'
+            WHERE COLUMN_53 = '실효'
               AND COLUMN_08 <= DATE_FORMAT(
                     DATE_SUB(
                         STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
