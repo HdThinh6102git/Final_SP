@@ -363,11 +363,9 @@ BEGIN
             UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_11 = '0', COLUMN_30 = '1'
             WHERE COLUMN_24 = '일시납';
 
-            /* Rule 6:
-              요건 추가 매뉴얼6. [계약상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경 및 [계약변경일]을 "0000-00-00"으로 수정 */
-            UPDATE T_TEMP_RPA_CDL_PROCESSED
-              SET COLUMN_07 = '시효',
-                  COLUMN_09 = '0000-00-00'
+            -- Rule 6: [계약상태]=“실효” & [최종납입월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
+            -- 3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
+            UPDATE T_TEMP_RPA_CDL_PROCESSED SET COLUMN_07 = '시효'
             WHERE COLUMN_07 = '실효'
               AND COLUMN_29 IS NOT NULL AND COLUMN_29 <> ''
               AND LEFT(
