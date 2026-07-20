@@ -381,7 +381,7 @@ BEGIN
                     '%Y%m'
                 );
 
-          /* Rule 7: Update = "0000-00-00" when [계약상태] = "실효" */
+          /* Rule 7: Update [계약변경일] = "0000-00-00" when [계약상태] = "시효" */
           UPDATE T_TEMP_RPA_CDL_PROCESSED
           SET COLUMN_09 = '0000-00-00'
           WHERE COLUMN_07 = '시효';
