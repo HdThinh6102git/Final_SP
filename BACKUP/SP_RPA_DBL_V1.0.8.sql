@@ -209,15 +209,15 @@ BEGIN
                 COLUMN_04 = '1'
             WHERE COLUMN_20 = '일시납';
 
-            /* Rule 5: [상태]=실효 & [종납년월]=실효 3년 경과면, [상태]값을 "시효"로 변경
+            /* Rule 5: [상태]=실효 & [최종납입월]=실효 3년 경과면, [상태]값을 "시효"로 변경
                3년 경과 기준 : 현재월 기준 38개월 경과
             */
             UPDATE T_TEMP_RPA_DBL_PROCESSED
             SET COLUMN_18 = '시효'
             WHERE COLUMN_18 = '실효'
-              AND COLUMN_07 IS NOT NULL
-              AND COLUMN_07 <> ''
-              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_07), '-', ''), '/', ''), 6) <= DATE_FORMAT(
+              AND COLUMN_26 IS NOT NULL
+              AND COLUMN_26 <> ''
+              AND LEFT(REPLACE(REPLACE(TRIM(COLUMN_26), '-', ''), '.', ''), 6) <= DATE_FORMAT(
                 DATE_SUB(
                     STR_TO_DATE(CONCAT(v_target_ym, '01'), '%Y%m%d'),
                     INTERVAL 38 MONTH
