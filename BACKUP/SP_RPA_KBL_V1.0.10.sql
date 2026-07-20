@@ -370,7 +370,7 @@ BEGIN
             UPDATE T_TEMP_RPA_KBL_PROCESSED
             SET COLUMN_16 = LEFT(COLUMN_09, 7)
             WHERE (COLUMN_16 IS NULL OR COLUMN_16 = '' OR COLUMN_16 = '1900-01')
-              AND COLUMN_11 IN ('계류(성립이전)', '반송', '철회', '성립전철회');
+              AND COLUMN_11 IN ('계류(성립이전)', '반송', '철회');
 
             UPDATE T_TEMP_RPA_KBL_PROCESSED
             SET COLUMN_18 = '1'
