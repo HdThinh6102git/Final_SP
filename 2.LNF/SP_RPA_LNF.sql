@@ -372,6 +372,25 @@ BEGIN
                   AND ACTION = 'DEL'
             );
 
+            /*
+            Dev Note 02 (2026-07-20): Change Requirement 
+                1. Change the screen used to process Extra Data to "Premium Payment Inquiry" (심사.계약 > 계약사항관리 > 보험료입금조회).
+                2. For Contract Numbers where the value of [유지횟수] is '000' and no popup is displayed, retrieve the value from the [납입회차] column in the first row and update it to the [유지횟수] column.
+            */
+            UPDATE T_TEMP_RPA_LNF_PROCESSED a
+            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b 
+            ON 
+                a.COLUMN_14 = b.SEARCH_DATA
+            SET 
+                a.COLUMN_40 = b.AFTER_COLUMN_DATA
+            WHERE 
+                b.SYS_FLAG = '1'
+                AND b.BATCH_ID = IN_BATCH_ID
+                AND b.COMPANY_CODE = v_company_code
+                AND b.CONTRACT_TYPE = 'EXT'
+                AND b.BUSINESS_RULE_NO = '2'
+                AND b.ACTION = 'UPD';
+
             /* Rule 3: [계약상태]=“실효” & [유지년월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
                3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
             */
