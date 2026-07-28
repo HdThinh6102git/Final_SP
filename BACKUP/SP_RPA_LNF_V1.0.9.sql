@@ -1,22 +1,3 @@
-/*
- * SP_RPA_LNF
- * Description : Process Lina Life insurance data
- * Parameters  :
- *   IN_BATCH_ID       : Batch ID to process
- *   IN_INSURANCE_TYPE : Insurance type (LIF)
- *   IN_CONTRACT_TYPE  : Contract type (NEW / EXT)
- *   IN_TARGET_START_DATE    : Target start date for processing (YYYY-MM-DD)
- *   IN_TARGET_END_DATE    : Target end date for processing (YYYY-MM-DD)
- * Steps       :
- *   1. Hardcoded column mapping by contract type (NEW / EXT)
- *   2. Execute if column mapping is valid
- *      2.1. Create temp table
- *      2.2. Insert raw data into temp table
- *      2.3. Apply transformation rules (NEW / EXT)
- *      2.4. Insert transformed data into processed table
- *      2.5. Drop temp table
- */
-
 CREATE DEFINER=`root`@`localhost` PROCEDURE `rpa_insurance`.`SP_RPA_LNF`(
     IN IN_BATCH_ID       VARCHAR(100),
     IN IN_INSURANCE_TYPE VARCHAR(50),
@@ -53,8 +34,9 @@ BEGIN
         SET v_proc_table = 'T_RPA_LIFE_PROCESSED';
     END IF;
 
-    -- 1. Column Mapping
-    IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+    -- 1. Hardcoded Column Mapping for LINA Life (LNF)
+    IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        -- Mapping for NEW contracts (Columns 01-29 + Target-only 30, 31)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -163,7 +145,8 @@ BEGIN
             'COLUMN_30, ', -- 납기구분
             'COLUMN_31');  -- 납입월
 
-    ELSEIF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+    ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        -- Mapping for EXT contracts (Columns 01-44)
         SET v_raw_cols = ''; SET v_proc_cols = '';
         
         -- 01-03
@@ -341,7 +324,7 @@ BEGIN
         DEALLOCATE PREPARE stmt;
 
         -- 2.3. Apply transformation rules (NEW / EXT)
-        IF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
+        IF UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
             /* Rule 1: 맨 마지막열 값 추가(2개)
                ① 항목명I : 납기구분 / 항목값 : 년납
                ② 항목명II : 납입월 / 항목값 : 해당월도(ex.202512)
@@ -351,7 +334,7 @@ BEGIN
             SET COLUMN_30 = '년납',
                 COLUMN_31 = v_target_ym;
 
-        ELSEIF UPPER(IN_INSURANCE_TYPE) = "LIF" AND UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
+        ELSEIF UPPER(IN_CONTRACT_TYPE) = 'EXT' THEN
             /* Rule 1: [계약상태]="실효,시효,유지,청약"이면 [소멸일자]에 "0000-00-00"으로 수정 */
             UPDATE T_TEMP_RPA_LNF_PROCESSED
             SET COLUMN_32 = '0000-00-00'
@@ -371,25 +354,6 @@ BEGIN
                   AND BUSINESS_RULE_NO = '2'
                   AND ACTION = 'DEL'
             );
-
-            /*
-            Dev Note 02 (2026-07-20): Change Requirement 
-                1. Change the screen used to process Extra Data to "Premium Payment Inquiry" (심사.계약 > 계약사항관리 > 보험료입금조회).
-                2. For Contract Numbers where the value of [유지횟수] is '000' and no popup is displayed, retrieve the value from the [납입회차] column in the first row and update it to the [유지횟수] column.
-            */
-            UPDATE T_TEMP_RPA_LNF_PROCESSED a
-            INNER JOIN T_RPA_INSURANCE_EXTRA_GUIDE b 
-            ON 
-                a.COLUMN_14 = b.SEARCH_DATA
-            SET 
-                a.COLUMN_40 = b.AFTER_COLUMN_DATA
-            WHERE 
-                b.SYS_FLAG = '1'
-                AND b.BATCH_ID = IN_BATCH_ID
-                AND b.COMPANY_CODE = v_company_code
-                AND b.CONTRACT_TYPE = 'EXT'
-                AND b.BUSINESS_RULE_NO = '2'
-                AND b.ACTION = 'UPD';
 
             /* Rule 3: [계약상태]=“실효” & [유지년월]=“실효 3년 경과”면, [계약상태]값을 “시효”로 변경
                3년 경과 기준 : 마감월도 2025.12월 기준 최종납입월이 2022.10월 이하
