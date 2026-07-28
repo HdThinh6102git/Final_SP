@@ -107,77 +107,71 @@ BEGIN
             'COLUMN_11, ', -- 상품코드
             'COLUMN_12, '); -- 보험시기
 
-        -- Add Column 13
+        -- 13-15
         SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_13, '); -- 보험종기
+            'COLUMN_13, ', -- 태아여부
+            'COLUMN_14, ', -- 태아선지급
+            'COLUMN_15, '); -- 계약자
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_13, '); -- 보험종기
+            'COLUMN_13, ', -- 태아여부
+            'COLUMN_14, ', -- 태아선지급
+            'COLUMN_15, '); -- 계약자
 
-        -- 14-16
+        -- 16-18
         SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_14, ', -- 태아여부
-            'COLUMN_15, ', -- 태아선지급
-            'COLUMN_16, '); -- 계약자
+            'COLUMN_16, ', -- 계약자주민번호
+            'COLUMN_17, ', -- 피보험자
+            'COLUMN_18, '); -- 피보험자주민번호
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_14, ', -- 태아여부
-            'COLUMN_15, ', -- 태아선지급
-            'COLUMN_16, '); -- 계약자
+            'COLUMN_16, ', -- 계약자주민번호
+            'COLUMN_17, ', -- 피보험자
+            'COLUMN_18, '); -- 피보험자주민번호
 
-        -- 17-19
+        -- 19-21
         SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_17, ', -- 계약자주민번호
-            'COLUMN_18, ', -- 피보험자
-            'COLUMN_19, '); -- 피보험자주민번호
+            'COLUMN_19, ', -- 건수
+            'COLUMN_20, ', -- 보험료
+            'COLUMN_21, '); -- 보장보험료
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_17, ', -- 계약자주민번호
-            'COLUMN_18, ', -- 피보험자
-            'COLUMN_19, '); -- 피보험자주민번호
+            'COLUMN_19, ', -- 건수
+            'COLUMN_20, ', -- 보험료
+            'COLUMN_21, '); -- 보장보험료
 
-        -- 20-22
+        -- 22-24
         SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_20, ', -- 건수
-            'COLUMN_21, ', -- 보험료
-            'COLUMN_22, '); -- 보장보험료
+            'COLUMN_22, ', -- 수정보험료
+            'COLUMN_23, ', -- 납방
+            'COLUMN_24, '); -- 납기
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_20, ', -- 건수
-            'COLUMN_21, ', -- 보험료
-            'COLUMN_22, '); -- 보장보험료
+            'COLUMN_22, ', -- 수정보험료
+            'COLUMN_23, ', -- 납방
+            'COLUMN_24, '); -- 납기
 
-        -- 23-25
+        -- 25-27
         SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_23, ', -- 수정보험료
-            'COLUMN_24, ', -- 납방
-            'COLUMN_25, '); -- 납기
+            'COLUMN_25, ', -- 보기
+            'COLUMN_26, ', -- 군
+            'COLUMN_27, '); -- 구분
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_23, ', -- 수정보험료
-            'COLUMN_24, ', -- 납방
-            'COLUMN_25, '); -- 납기
+            'COLUMN_25, ', -- 보기
+            'COLUMN_26, ', -- 군
+            'COLUMN_27, '); -- 구분
 
-        -- 26-28
+        -- 28-30
         SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_26, ', -- 보기
-            'COLUMN_27, ', -- 군
-            'COLUMN_28, '); -- 구분
-        SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_26, ', -- 보기
-            'COLUMN_27, ', -- 군
-            'COLUMN_28, '); -- 구분
-
-        -- 29-31
-        SET v_raw_cols = CONCAT(v_raw_cols,
-            'COLUMN_29, ', -- 매출발생일자
+            'COLUMN_28, ', -- 매출발생일자
             'NULL, ',      -- 납기구분
             'NULL, ');     -- 납입월
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_29, ', -- 매출발생일자
-            'COLUMN_30, ', -- 납기구분
-            'COLUMN_31, '); -- 납입월
+            'COLUMN_28, ', -- 매출발생일자
+            'COLUMN_29, ', -- 납기구분
+            'COLUMN_30, '); -- 납입월
 
-        -- 32
+        -- 31
         SET v_raw_cols = CONCAT(v_raw_cols,
             'NULL');       -- 납입일
         SET v_proc_cols = CONCAT(v_proc_cols,
-            'COLUMN_32');  -- 납입일
+            'COLUMN_31');  -- 납입일
 
     ELSEIF UPPER(IN_INSURANCE_TYPE) = 'CAR' AND UPPER(IN_CONTRACT_TYPE) = 'NEW' THEN
         SET v_raw_cols = ''; SET v_proc_cols = '';
@@ -392,9 +386,9 @@ BEGIN
             -- ③ 항목명III : 납입일 / 항목값 : 회계일과 동일한 값으로 반영
             -- ※ 전체 행에 반영
             UPDATE T_TEMP_RPA_KBG_PROCESSED
-            SET COLUMN_30 = '년납',
-                COLUMN_31 = v_target_ym,
-                COLUMN_32 = COLUMN_09;
+            SET COLUMN_29 = '년납',
+                COLUMN_30 = v_target_ym,
+                COLUMN_31 = COLUMN_09;
 
             -- Rule 2: [증권번호] 오름차순 정렬 정렬 후 [보험시기] ≠해당월이면 삭제
             SET @seq := 0;
@@ -406,18 +400,18 @@ BEGIN
             WHERE LEFT(REPLACE(REPLACE(COLUMN_12, '-', ''), '.', ''), 6) <> v_target_ym;
 
             -- Rule 3: 증권번호 중복 편집
-            -- ① 중복 증권번호의 [구분]=각각"취소,신규"이면 [구분]="취소"로 수정 및 중복데이터 행삭제
+            -- ① 중복 증권번호의 [구분]=각각"취소,정상"이면 [구분]="취소"로 수정 및 중복데이터 행삭제
             DROP TEMPORARY TABLE IF EXISTS tmp_kbg_dup_case;
             CREATE TEMPORARY TABLE tmp_kbg_dup_case
             SELECT COLUMN_08
             FROM T_TEMP_RPA_KBG_PROCESSED
             GROUP BY COLUMN_08
-            HAVING SUM(CASE WHEN COLUMN_28 = '취소' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN COLUMN_28 = '신규' THEN 1 ELSE 0 END) > 0;
+            HAVING SUM(CASE WHEN COLUMN_27 = '취소' THEN 1 ELSE 0 END) > 0
+               AND SUM(CASE WHEN COLUMN_27 = '신규' THEN 1 ELSE 0 END) > 0;
 
             UPDATE T_TEMP_RPA_KBG_PROCESSED t
             INNER JOIN tmp_kbg_dup_case d ON t.COLUMN_08 = d.COLUMN_08
-            SET t.COLUMN_28 = '취소';
+            SET t.COLUMN_27 = '취소';
 
             DROP TEMPORARY TABLE IF EXISTS tmp_kbg_keep_row;
             CREATE TEMPORARY TABLE tmp_kbg_keep_row
@@ -438,9 +432,9 @@ BEGIN
             CREATE TEMPORARY TABLE tmp_kbg_agg_data
             SELECT
                 a.COLUMN_08,
-                SUM(CAST(REPLACE(IFNULL(a.COLUMN_21, '0'), ',', '') AS DECIMAL(18,0))) AS sum_21,
+                SUM(CAST(REPLACE(IFNULL(a.COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS sum_20,
                 COALESCE(
-                    MIN(CASE WHEN CAST(IFNULL(a.COLUMN_20, '0') AS SIGNED) <> 0 THEN a.SORT_ORDER_NO END),
+                    MIN(CASE WHEN CAST(IFNULL(a.COLUMN_19, '0') AS SIGNED) <> 0 THEN a.SORT_ORDER_NO END),
                     MIN(a.SORT_ORDER_NO)
                 ) AS keep_sort_order_no
             FROM T_TEMP_RPA_KBG_PROCESSED a
@@ -452,7 +446,7 @@ BEGIN
             INNER JOIN tmp_kbg_agg_data a
                     ON t.COLUMN_08 = a.COLUMN_08
                 AND t.SORT_ORDER_NO = a.keep_sort_order_no
-            SET t.COLUMN_21 = CAST(a.sum_21 AS CHAR);
+            SET t.COLUMN_20 = CAST(a.sum_20 AS CHAR);
 
             DELETE t
             FROM T_TEMP_RPA_KBG_PROCESSED t
@@ -467,30 +461,30 @@ BEGIN
                     ON t.COLUMN_08 = a.COLUMN_08
             WHERE t.COLUMN_10 LIKE '%KB 금쪽같은 자녀보험%'
             AND (
-                    t.COLUMN_20 = '0'
-                    OR CAST(IFNULL(t.COLUMN_20, '0') AS SIGNED) = 0
+                    t.COLUMN_19 = '0'
+                    OR CAST(IFNULL(t.COLUMN_19, '0') AS SIGNED) = 0
                 );
 
             -- Rule 4: [보험료],[수정보험료]="마이너스금액"이면 "플러스"로 변경
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET
-            COLUMN_21 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_21, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
+            COLUMN_20 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_20, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
             WHERE
-            REPLACE(IFNULL(COLUMN_21, '0'), ',', '')
+            REPLACE(IFNULL(COLUMN_20, '0'), ',', '')
                     REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
             AND CAST(
-                        REPLACE(IFNULL(COLUMN_21, '0'), ',', '')
+                        REPLACE(IFNULL(COLUMN_20, '0'), ',', '')
                         AS DECIMAL(15,2)
             ) < 0;
 
             UPDATE T_TEMP_RPA_KBG_PROCESSED
             SET
-            COLUMN_23 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_23, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
+            COLUMN_22 = CAST(ABS(CAST(REPLACE(IFNULL(COLUMN_22, '0'), ',', '') AS DECIMAL(18,0))) AS CHAR)
             WHERE
-            REPLACE(IFNULL(COLUMN_23, '0'), ',', '')
+            REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
                     REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
             AND CAST(
-                        REPLACE(IFNULL(COLUMN_23, '0'), ',', '')
+                        REPLACE(IFNULL(COLUMN_22, '0'), ',', '')
                         AS DECIMAL(15,2)
             ) < 0;
 
